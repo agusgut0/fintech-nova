@@ -1,0 +1,22 @@
+services:
+  db:
+    image: fabripeveraro/db:1.0.0
+    container_name: mariadb_server
+    env_file:
+      - db/.env
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+volumes:
+  db_data:
+
+networks:
+  fintech_net:
+    driver: bridge
