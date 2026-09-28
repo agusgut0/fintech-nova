@@ -1,7 +1,7 @@
 services:
   db:
     image: fabripeveraro/db:1.0.0
-    container_name: mariadb_server
+    container_name: dbPrincipal
     env_file:
       - db/.env
     ports:
@@ -14,6 +14,23 @@ services:
         limits:
           cpus: '0.50'
           memory: 512M
+  api-clientes:
+    image: fabripeveraro/api-clientes:1.0.0
+    container_name: api_clientes
+    env_file:
+      - api-clientes/.env
+    ports:
+      - "8080:8080"
+    networks:
+      - fintech_net
+    depends_on:
+      - db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
+
 volumes:
   db_data:
 
