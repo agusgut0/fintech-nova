@@ -19,3 +19,7 @@ Para las siguientes etapas de desarrollo e integración de los demás microservi
 *   **Validación de Disponibilidad (Healthchecks):** Incorporar directivas de salud en el `docker-compose.yml` para sincronizar el arranque del microservicio de clientes y asegurar que la base de datos esté completamente operativa antes de recibir conexiones.
 *   **Optimización del Proceso de Build:** Evaluar la implementación de compilaciones multi-etapa (multistage builds) para separar las herramientas de compilación de las librerías de ejecución de Python.
 *   **Gestión Centralizada de Secretos:** Reemplazar progresivamente los archivos `.env` locales por mecanismos de control de secretos más robustos a medida que el proyecto escale hacia múltiples entornos.
+
+## Imagenes
+Db: (https://hub.docker.com/repository/docker/fabripeveraro/db)
+Api clientes: (https://hub.docker.com/repository/docker/fabripeveraro/api-clientes/general)
