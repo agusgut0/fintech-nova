@@ -29,7 +29,21 @@ services:
         limits:
           cpus: '0.30'
           memory: 256M
-
+  api-transacciones:
+    image: 89768/api-transacciones:1.0.0
+    container_name: api-transacciones
+    env_file:
+      - api-transacciones/.env
+    networks:
+      - fintech_net
+    depends_on:
+      - db
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
 volumes:
   db_data:
 
