@@ -143,3 +143,4 @@ Las imágenes son construidas y versionadas siguiendo estándares semánticos:
 * [ ] Integración de los 4 microservicios backend restantes.
 * [ ] Configuración del reverse proxy NGINX con terminación TLS autofirmada en puerto 443.
 * [ ] Script de despliegue automatizado `deploy.sh` en instancia EC2 de AWS.
+* [ ] **Gestión Centralizada de Secretos:** Reemplazar progresivamente los archivos `.env` locales por mecanismos centralizados de gestión de secretos (ej. AWS Secrets Manager o HashiCorp Vault) al escalar a entornos productivos.
