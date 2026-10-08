@@ -9,3 +9,6 @@ db/data/
 .env
 .env.*
 !env.example
+
+reglas-mentor.md
+
