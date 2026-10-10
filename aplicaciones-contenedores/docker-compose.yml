@@ -44,6 +44,21 @@ services:
         limits:
           cpus: '0.30'
           memory: 256M
+  api-facturas:
+    image: 89768/api-facturas:1.0.0
+    container_name: api-facturas
+    env_file:
+      - api-facturas/.env
+    networks:
+      - fintech_net
+    depends_on:
+      - db
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
 volumes:
   db_data:
 
