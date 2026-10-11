@@ -59,6 +59,21 @@ services:
         limits:
           cpus: '0.30'
           memory: 256M
+  api-tarjetas:
+    image: ezequielmartellotto/api-tarjetas:1.0.0
+    container_name: api_tarjetas
+    env_file:
+      - api-tarjetas/.env
+    networks:
+      - fintech_net
+    depends_on:
+      - db
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
 volumes:
   db_data:
 

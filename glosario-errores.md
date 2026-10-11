@@ -72,3 +72,13 @@
 - **Error:** Se realizó `docker push 89768/api-transacciones` sin especificar tag, publicándose por defecto como `:latest`, lo cual incumple la consigna del TP (`:1.0.0`).
 - **Causa:** No explicitar la versión semántica durante el proceso de build/push.
 - **Solución:** Etiquetar la imagen local existente con `docker tag 89768/api-transacciones:latest 89768/api-transacciones:1.0.0` y ejecutar el push correspondiente.
+
+### 16. Error al inicializar script de bases de datos
+- **Error:** En logs del contenedor de la base se generaba un error de interpretacion al iniciar databases.sh, lo que omitia la creacion de las bd
+- **Causa:** mala configuracion del vscode
+- **Solución:** Se cambia opcion CRLF por LF desde la barra inferior y guardamos nuevamente el archivo databases.sh
+
+### 
+- **Error:** 
+- **Causa:** 
+- **Solución:**
