@@ -59,6 +59,28 @@ services:
         limits:
           cpus: '0.30'
           memory: 256M
+  web:
+    image: 89768/web:1.0.0
+    container_name: web
+    ports:
+      - "8443:8443"
+    networks:
+      - fintech_net
+    depends_on:
+      - db
+      - api-tarjetas
+      - api-pagos
+      - api-clientes
+      - api-transacciones
+      - api-facturas
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
 volumes:
   db_data:
 

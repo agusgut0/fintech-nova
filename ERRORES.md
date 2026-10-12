@@ -1,2 +1,73 @@
-1° Error:
+### Error:
 Se encontro un error al hacer el primer compose up de los db debido a una mala configuracion del vscode, se arreglo cambiando la secuencia de fin de linea
+
+### 1. Puerto 3306 mapeado al host en docker-compose.yml
+- **Error:** El servicio `db` tenía `ports: "3306:3306"`, lo que expone la base de datos al exterior de la red Docker, violando la consigna que indica que ninguna API ni la base de datos debe mapear puertos al host.
+- **Solución:** Eliminar la directiva `ports` del servicio `db`. La comunicación con las APIs se realiza internamente a través de la red bridge de Docker usando DNS interno.
+
+### 2. Servicio db sin red fintech_net
+- **Error:** El servicio `db` no tenía la directiva `networks: [fintech_net]`, quedando en la red default de Docker mientras las APIs estaban en `fintech_net`. Esto impedía la comunicación por DNS interno entre la base de datos y las APIs.
+- **Solución:** Agregar `networks: [fintech_net]` al servicio `db` para que comparta la misma red interna que el resto de los servicios.
+
+### 3. Ruta incorrecta en el COPY del Dockerfile
+- **Error:** El Dockerfile usaba `COPY db/init-scripts/ /docker-entrypoint-initdb.d/`, lo cual asume que el build context es la carpeta padre (`aplicaciones-contenedores/`) y no la carpeta `db/` donde vive el Dockerfile.
+- **Solución:** Cambiar la ruta a `COPY init-scripts/ /docker-entrypoint-initdb.d/` para que sea relativa al build context correcto (`db/`).
+
+## Dockerización de api-clientes (Python / Flask)
+
+### 4. Dockerfile sin Multistage Build
+- **Error:** El Dockerfile original usaba una sola etapa, dejando herramientas de compilación y cache de pip en la imagen final, aumentando su tamaño innecesariamente.
+- **Solución:** Implementar un Multistage Build con dos etapas: una `builder` que crea el venv e instala las dependencias, y una `runtime` que solo copia el venv ya compilado y el código fuente.
+
+### 5. Contenedor corriendo como usuario root
+- **Error:** El Dockerfile no definía un usuario no privilegiado, por lo que el proceso Flask se ejecutaba como root dentro del contenedor, representando un riesgo de seguridad.
+- **Solución:** Agregar `RUN adduser --disabled-password --no-create-home appuser` y `USER appuser` en la etapa de runtime, antes del `CMD`.
+
+### 6. Puerto 8080 mapeado al host en docker-compose.yml
+- **Error:** El servicio `api-clientes` tenía `ports: "8080:8080"`, exponiendo la API directamente al exterior. La consigna indica que solo el servicio `web` (NGINX) puede mapear puertos al host.
+- **Solución:** Eliminar la directiva `ports` del servicio. La API recibe tráfico únicamente a través del proxy inverso NGINX por la red interna Docker.
+
+### 7. Falta restart: always en docker-compose.yml
+- **Error:** El servicio `api-clientes` no tenía la directiva `restart: always`, que la consigna exige para todos los servicios.
+- **Solución:** Agregar `restart: always` al servicio `api-clientes` en el docker-compose.yml.
+
+### 8. Rutas incorrectas en el COPY del Dockerfile
+- **Error:** El Dockerfile usaba `COPY api-clientes/requirements.txt .` y `COPY api-clientes/ .`, asumiendo que el build context era la carpeta padre en lugar de la carpeta `api-clientes/` donde vive el Dockerfile.
+- **Solución:** Cambiar las rutas a `COPY requirements.txt .` y `COPY . .` para que sean relativas al build context correcto.
+
+## Dockerización de api-transacciones (Go)
+
+### 9. Fallo de conexión con Docker Daemon en Windows (Named Pipe)
+- **Error:** Al intentar compilar la imagen con `docker build`, se produjo el error `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine: El sistema no puede encontrar el archivo especificado`.
+- **Causa:** El cliente CLI de Docker en Windows no encontraba el socket/named pipe de comunicación porque la aplicación Docker Desktop estaba cerrada o su motor no había finalizado de inicializar.
+- **Solución:** Iniciar Docker Desktop y aguardar a que el servicio se encuentre en estado "Engine running" antes de ejecutar comandos contra el daemon.
+
+### 10. Uso conceptual erróneo de `go run` e imagen base pesada en Runtime
+- **Error:** El Dockerfile inicial utilizaba `FROM golang:1.22` tanto en builder como en runtime, y ejecutaba `RUN go run` para levantar la aplicación.
+- **Causa:** Go es un lenguaje compilado que puede generar binarios estáticos autónomos. Mantener la imagen del SDK completo de Go (`golang:1.22`) en producción deja una imagen de ~800 MB con herramientas de compilación innecesarias, y la directiva `RUN` ejecuta comandos en tiempo de construcción (build-time) en vez de definir el proceso de arranque en runtime (`CMD`).
+- **Solución:** Implementar un Multistage Build donde la etapa `builder` compila un binario estático mediante `CGO_ENABLED=0 GOOS=linux go build -o /app/server .`, y la etapa `runtime` utiliza una imagen base mínima `alpine:3.19` (reduciendo el tamaño final a ~15 MB) ejecutando el binario directamente con `CMD ["./server"]`.
+
+### 11. Limpieza prematura de dependencias por uso de `go mod tidy` en Dockerfile
+- **Error:** En la etapa builder se ejecutó `RUN go mod tidy` inmediatamente después de copiar únicamente `go.mod` y `go.sum`.
+- **Causa:** `go mod tidy` analiza los archivos de código fuente `.go` para sincronizar las dependencias. Al no haberse copiado aún el código fuente al contenedor (para aprovechar la caché de Docker), el comando interpretaba que el proyecto carecía de código y eliminaba dependencias requeridas.
+- **Solución:** Utilizar `RUN go mod download`, el cual descarga a la caché de módulos únicamente las dependencias declaradas en `go.mod` y `go.sum` sin requerir inspeccionar los archivos de código fuente.
+
+### 12. Ausencia de certificados raíz TLS (ca-certificates) en imagen mínima
+- **Error:** Posible fallo en las llamadas HTTPS que realiza el microservicio a la API externa de geolocalización (`https://ipapi.co`).
+- **Causa:** Las imágenes ultraligeras de Alpine Linux no incluyen por defecto el paquete de certificados de autoridades certificadoras (CA) raíz, provocando potenciales errores del tipo `x509: certificate signed by unknown authority` en peticiones HTTPS salientes.
+- **Solución:** Instalar explícitamente `ca-certificates` en la etapa de runtime mediante `RUN apk --no-cache add ca-certificates`.
+
+### 13. Sintaxis incompatible de `adduser` para usuario no-root en Alpine
+- **Error:** Se intentó crear el usuario no-root con los flags de Debian/Ubuntu (`adduser --disabled-password --no-create-home appuser`), lo que arroja error de argumentos no reconocidos en Alpine.
+- **Causa:** Alpine utiliza la suite BusyBox de utilidades Linux, cuya convención de flags para `adduser` difiere de utilidades GNU/Debian.
+- **Solución:** Emplear la sintaxis nativa de Alpine: `RUN adduser -D -H -u 1000 appuser` y fijar el contexto de ejecución con `USER appuser`.
+
+### 14. Confusión entre Host DNS (`DB_HOST`) y Nombre de Base de Datos (`DB_NAME`)
+- **Error:** Se configuró en `.env` la variable `DB_HOST=db_transacciones` y `DB_NAME=db_fintech`.
+- **Causa:** Confusión entre el identificador del contenedor en la red Docker (`db`) y el esquema lógico de base de datos asignado al microservicio (`db_transacciones`).
+- **Solución:** Asignar `DB_HOST=db` (nombre del servicio en `docker-compose.yml` resoluble por DNS interno) y `DB_NAME=db_transacciones` (esquema creado por el script `00-databases.sh`).
+
+### 15. Omisión de tag semántico en push inicial a Docker Hub
+- **Error:** Se realizó `docker push 89768/api-transacciones` sin especificar tag, publicándose por defecto como `:latest`, lo cual incumple la consigna del TP (`:1.0.0`).
+- **Causa:** No explicitar la versión semántica durante el proceso de build/push.
+- **Solución:** Etiquetar la imagen local existente con `docker tag 89768/api-transacciones:latest 89768/api-transacciones:1.0.0` y ejecutar el push correspondiente.
