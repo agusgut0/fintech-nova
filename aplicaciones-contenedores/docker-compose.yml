@@ -74,6 +74,22 @@ services:
         limits:
           cpus: '0.30'
           memory: 256M
+  api-pagos:
+    image: jhorsi/api-pagos:1.0.0
+    container_name: api-pagos
+    init: true
+    env_file:
+      - api-pagos/.env
+    networks:
+      - fintech_net
+    depends_on:
+      - db
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
 volumes:
   db_data:
 
