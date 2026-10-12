@@ -18,7 +18,7 @@
 
 **Integrantes:** Agustin Thomas Gutierrez Ioime • Fabrizio Luis Peveraro • Juan Hernan Orsi Scillia • Ezequiel Martelloto
 
-Enunciado: [Enunciado-TP-Parte-1.md](./Enunciado-TP-Parte-1.md)
+Enunciado: [Enunciado-TP-Parte-1.md](./Enunciado-TP-Parte-1.md) • Documentación: [ERRORES.md](./ERRORES.md) | [SEGURIDAD.md](./SEGURIDAD.md) | [AWS_EC2.md](./AWS_EC2.md)
 
 [Imágenes en Docker Hub](#-6-imágenes-oficiales-en-docker-hub) • [Arquitectura](#️-2-arquitectura-y-topología-de-red) • [Servicios](#-3-catálogo-de-servicios) • [Seguridad](#️-4-decisiones-de-diseño-y-hardening-de-seguridad) • [Despliegue y Pruebas](#-5-guía-de-despliegue-y-testeo)
 
@@ -52,6 +52,7 @@ flowchart TD
     subgraph Host [" Host / Entorno Externo "]
         User["Clientes / Tráfico HTTPS"] -->|HTTPS :8443| Nginx["web<br/>(NGINX 1.25 Alpine)<br/>User: nginx"]
         Certs[("Host ./certs<br/>(cert.pem / key.pem)")] -.->|Montaje :ro /etc/nginx/certs| Nginx
+        FxAPI["API Externa Tipo de Cambio<br/>(open.er-api.com :443)"]
         GeoAPI["API Externa Geolocalización<br/>(ipapi.co :443)"]
     end
 
@@ -67,7 +68,8 @@ flowchart TD
         Facturas -->|DNS interno 'db:3306'| DB
         Transacciones -->|DNS interno 'db:3306'| DB
         Tarjetas -->|DNS interno 'db:3306'| DB
-        Transacciones -.->|Salida HTTPS| GeoAPI
+        Pagos -.->|Salida HTTPS ARS->USD| FxAPI
+        Transacciones -.->|Salida HTTPS GeoIP| GeoAPI
         
         Vol[(Volumen Persistente<br/>db_data)] -.->|Montaje /var/lib/mysql| DB
     end
@@ -79,7 +81,7 @@ flowchart TD
     class Clientes,Pagos,Facturas,Transacciones,Tarjetas,DB secured;
     class Nginx gateway;
     class Vol,Certs storage;
-    class GeoAPI external;
+    class FxAPI,GeoAPI external;
 ```
 
 ---
@@ -91,7 +93,7 @@ flowchart TD
 | **`db`** | `mariadb:11.8.9-ubi9` | `3306` | ❌ *Ninguno* | `mysql` | 0.50 CPU / 512 MB |
 | **`api-clientes`** | `python:3.11-slim` → `python:3.11-slim` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
 | **`api-pagos`** | `node:22-alpine3.21` → `alpine:3.21` (nodejs) | `8080` | ❌ *Ninguno* | `app` | 0.30 CPU / 256 MB |
-| **`api-facturas`** | `maven:3.9.6-eclipse-temurin-21-alpine` → `eclipse-temurin:21-jre-alpine` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
+| **`api-facturas`** | `maven:3.9.6-eclipse-temurin-21-alpine` → `eclipse-temurin:21-jre-alpine` | `8080` | ❌ *Ninguno* | `appuser` | 1.00 CPU / 256 MB |
 | **`api-transacciones`** | `golang:1.22` → `alpine:3.19` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
 | **`api-tarjetas`** | `mcr.microsoft.com/dotnet/sdk:8.0` → `aspnet:8.0` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
 | **`web`** | `node:20-alpine` → `nginx:1.25-alpine` | `8443` (SSL) | ✅ `8443:8443` | `nginx` | 0.30 CPU / 256 MB |
@@ -103,27 +105,28 @@ flowchart TD
 ### A. Compilación Multietapa (*Multistage Build*)
 * **`api-clientes`:** Etapa `builder` crea el entorno virtual (`/opt/venv`) e instala dependencias; etapa `runtime` parte de `python:3.11-slim` y solo copia el entorno virtual y el código fuente.
 * **`api-pagos`:** Etapa `deps` instala dependencias de producción con `npm ci --omit=dev`; etapa `runtime` parte de `alpine:3.21` con el binario de `nodejs`, copiando únicamente `node_modules` y `src/`. Con `init: true` en Compose para manejo limpio de señales PID 1.
-* **`api-facturas`:** Etapa `builder` descarga dependencias con Maven y empaqueta el `.jar`; etapa `runtime` utiliza exclusivamente el JRE (`eclipse-temurin:21-jre-alpine`), sin JDK ni Maven en producción.
-* **`api-transacciones`:** Etapa `builder` compila un binario 100% estático (`CGO_ENABLED=0 GOOS=linux`); etapa `runtime` parte de `alpine:3.19` (~5 MB) copiando únicamente el ejecutable.
+* **`api-facturas`:** Etapa `builder` descarga dependencias con Maven y empaqueta el `.jar`; etapa `runtime` utiliza exclusivamente el JRE (`eclipse-temurin:21-jre-alpine`), sin JDK ni Maven en producción, y optimiza el arranque de la JVM mediante `JAVA_TOOL_OPTIONS="-XX:TieredStopAtLevel=1 -Dspring.main.lazy-initialization=true -Dspring.jmx.enabled=false"`.
+* **`api-transacciones`:** Etapa `builder` compila un binario 100% estático (`CGO_ENABLED=0 GOOS=linux`); etapa `runtime` parte de `alpine:3.19` (~5 MB) copiando únicamente el ejecutable y `ca-certificates`.
 * **`api-tarjetas`:** Etapa `builder` ejecuta `dotnet publish -c Release`; etapa `final` utiliza `mcr.microsoft.com/dotnet/aspnet:8.0` sin el SDK de .NET.
 * **`web`:** Etapa `builder` construye los estáticos web con Node 20 (`npm run build`); etapa `runtime` sirve el bundle compilado desde `nginx:1.25-alpine`.
 * **Beneficio:** Reducción drástica de la superficie de ataque y del tamaño de las imágenes al eliminar compiladores, gestores de paquetes y SDKs del entorno de ejecución.
 
 ### B. Ejecución No Privilegiada (*Non-Root User*)
 * Todos los contenedores ejecutan sus procesos principales bajo usuarios de sistema sin privilegios (`appuser`, `app`, `nginx`, `mysql`).
-* El contenedor `web` escucha en el puerto no privilegiado `8443` con `USER nginx` y permisos ajustados sobre `/var/cache/nginx`, `/var/run` y `/var/log/nginx`, evitando el uso de `root` o capacidades adicionales del kernel (`CAP_NET_BIND_SERVICE`).
+* El contenedor `web` escucha en el puerto no privilegiado `8443` con `USER nginx`, creando previamente `/var/run/nginx.pid` y ajustando permisos sobre `/var/cache/nginx`, `/var/run/nginx.pid`, `/var/log/nginx` y `/etc/nginx/conf.d`, evitando el uso de `root` o capacidades adicionales del kernel (`CAP_NET_BIND_SERVICE`).
 
 ### C. TLS en Runtime y Red Aislada
 * **Certificados fuera de la imagen:** El par `cert.pem` / `key.pem` nunca se empaqueta en la imagen de Docker ni se sube al repositorio. Se genera en *runtime* en el host (`./certs`) y se inyecta mediante un bind mount de solo lectura (`./certs:/etc/nginx/certs:ro`).
 * **Único punto de entrada:** Solo `web` publica el puerto `8443` al host. El puerto `80` permanece cerrado y las APIs/DB solo son alcanzables dentro de la red bridge `fintech_net`.
 
 ### D. Aislamiento Lógico de Bases de Datos
-* Una única instancia de MariaDB aloja esquemas independientes (`db_clientes`, `db_transacciones`, `db_pagos`, `db_facturas`, `db_tarjetas`).
-* El script inicial `00-databases.sh` crea las bases y asigna permisos específicos por microservicio bajo el principio de menor privilegio.
+* Una única instancia de MariaDB aloja 5 esquemas independientes (`db_clientes`, `db_transacciones`, `db_pagos`, `db_facturas`, `db_tarjetas`).
+* El script inicial `00-databases.sh` crea los esquemas y otorga permisos al usuario de aplicación (`MYSQL_USER`), evitando que los microservicios se conecten con la cuenta administrativa `root` y aislando lógicamente las tablas por dominio (`DB_NAME`).
 
-### E. Gestión de Secretos y Límites de Cómputo
+### E. Gestión de Secretos, Healthchecks y Límites de Cómputo
 * **Cero Secretos Hardcodeados:** Configuración inyectada mediante directivas `env_file` (`<servicio>/.env`), excluidas tanto en `.gitignore` como en `.dockerignore`.
-* **Protección contra DoS / Saturation:** Límites de recursos (`deploy.resources.limits`) de CPU y RAM en todos los servicios (totalizando `2.30 vCPU` y `2048 MB` de RAM, dimensionados para una instancia AWS EC2 `t3.medium`) junto con política `restart: always`.
+* **Orquestación de Arranque (`healthcheck`):** Los 5 microservicios esperan a que MariaDB esté completamente inicializada (`service_healthy`), y `web` espera al healthcheck activo de `api-facturas` antes de recibir tráfico.
+* **Protección contra DoS / Saturation:** Límites de recursos (`deploy.resources.limits`) de CPU y RAM en todos los servicios (asignando `1.00 vCPU` a `api-facturas` para absorber la ráfaga de arranque de la JVM y `0.30 vCPU` al resto de las APIs, con un tope de `2048 MB` de RAM total dimensionado para una instancia AWS EC2 `t3.medium`) junto con política `restart: always`.
 
 ---
 
@@ -186,9 +189,9 @@ Una vez levantados los contenedores, se puede verificar en una sola línea tanto
 
 ## 🐳 6. Imágenes Oficiales en Docker Hub
 
-Las imágenes consumidas por `docker-compose.yml` están publicadas bajo el tag `1.0.0`:
+Las imágenes consumidas por `docker-compose.yml` están publicadas en Docker Hub bajo versionado semántico:
 
-* 🗄️ **Base de Datos (`db`):** [`fabripeveraro/db:1.0.0`](https://hub.docker.com/r/fabripeveraro/db)
+* 🗄️ **Base de Datos (`db`):** [`fabripeveraro/db:1.0.1`](https://hub.docker.com/r/fabripeveraro/db)
 * 👤 **API Clientes (`api-clientes`):** [`fabripeveraro/api-clientes:1.0.0`](https://hub.docker.com/r/fabripeveraro/api-clientes)
 * 💸 **API Pagos (`api-pagos`):** [`jhorsi/api-pagos:1.0.0`](https://hub.docker.com/r/jhorsi/api-pagos)
 * 🧾 **API Facturas (`api-facturas`):** [`89768/api-facturas:1.0.0`](https://hub.docker.com/r/89768/api-facturas)
@@ -198,9 +201,11 @@ Las imágenes consumidas por `docker-compose.yml` están publicadas bajo el tag 
 
 ---
 
-## 📈 7. Próximos Pasos Identificados
+## 📈 7. Posibles Mejoras Futuras
 
-* [ ] Integración de **Healthchecks** activos en MariaDB para condicionar el arranque de APIs dependientes (`condition: service_healthy`).
-* [ ] Script de despliegue automatizado `deploy.sh` en instancia EC2 de AWS con validación automatizada vía `curl -k`.
-* [ ] **Gestión Centralizada de Secretos:** Reemplazar progresivamente los archivos `.env` locales por mecanismos centralizados de gestión de secretos (ej. AWS Secrets Manager o HashiCorp Vault) al escalar a entornos productivos.
+* **Segregación de Usuarios de Base de Datos por Microservicio:** Reemplazar el usuario compartido `app_user` por credenciales exclusivas para cada microservicio (`user_clientes`, `user_pagos`, etc.) con permisos `GRANT` restringidos únicamente a su propio esquema.
+* **Healthchecks en la totalidad de las APIs:** Extender los chequeos de salud activos (actualmente implementados en `db` y `api-facturas`) al resto de los microservicios (`api-clientes`, `api-pagos`, `api-transacciones` y `api-tarjetas`).
+* **Servidor WSGI de Producción para `api-clientes`:** Reemplazar el servidor de desarrollo integrado de Flask (`python main.py`) por `gunicorn` con múltiples *workers* para entornos de alta concurrencia.
+* **Gestión Centralizada de Secretos y Escaneo en CI/CD:** Integrar herramientas de análisis estático de vulnerabilidades de imágenes (como **Trivy** o **Checkov**) en un pipeline CI/CD y migrar los archivos `.env` hacia **AWS Secrets Manager** o **HashiCorp Vault**.
+
 
