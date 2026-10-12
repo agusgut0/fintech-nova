@@ -102,3 +102,11 @@
 - **Error** La imagen publicada en Docker Hub no creaba las bases ni las tablas.
 - **Causa** los scripts de inicialización tenían CRLF y el COPY los metió así en la imagen. Arreglar el editor o el archivo local no cambia una imagen ya subida. Además, Git en Windows puede reconvertirlos, y esos scripts solo corren con el volumen vacío.
 - **Solucion** pasar a LF, agregar el .gitattributes, reconstruir y subir con el tag 1.0.1, actualizar el compose y el deploy, borrar el volumen donde ya se inicializó y verificar la imagen.
+
+### 21. Demora excesiva en el arranque de `api-facturas` (Spring Boot) y tabla vacía al iniciar `web`
+- **Error:** Al levantar el entorno con `docker compose up -d` y abrir el frontend, la tabla de facturas aparecía vacía mientras el resto de los microservicios ya respondían, demorando hasta 45,6 segundos en estar operativa.
+- **Causa:** Dos factores combinados: por un lado, el servicio `web` utilizaba `depends_on` simple (`service_started`), por lo que NGINX abría el puerto `8443` apenas se creaba el contenedor de `api-facturas` sin esperar a que Tomcat escuchara en el puerto `8080`. Por otro lado, `api-facturas` tenía un límite restrictivo de `cpus: '0.30'` y la configuración por defecto de la JVM (compilador JIT C2 y carga ansiosa de beans), produciendo *CPU throttling* durante el arranque intensivo de la JVM, el escaneo de clases de Spring Boot y la inicialización de Hibernate/JPA.
+- **Solución:** Se aplicaron dos mejoras complementarias sin necesidad de reconstruir la imagen:
+  1. **En `docker-compose.yml`:** Se configuró un `healthcheck` en `api-facturas` (`wget --spider -q http://127.0.0.1:8080/facturas || exit 1`) junto con `condition: service_healthy` en el `depends_on` del servicio `web`, y se incrementó el límite de CPU a `cpus: '1.0'`, lo que redujo el arranque de **45,6s a 12s**.
+  2. **En `api-facturas/.env`:** Se añadió la variable `JAVA_TOOL_OPTIONS=-XX:TieredStopAtLevel=1 -Dspring.main.lazy-initialization=true -Dspring.jmx.enabled=false` (que la JVM lee automáticamente al iniciar para usar solo el compilador JIT rápido C1, activar la inicialización diferida de beans en Spring y desactivar JMX), logrando reducir el arranque finalmente a **6,5s**.
+

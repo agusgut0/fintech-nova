@@ -62,11 +62,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL","wget --spider -q http://127.0.0.1:8080/facturas || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 7s
     restart: always
     deploy:
       resources:
         limits:
-          cpus: '0.30'
+          cpus: '2.0'
           memory: 256M
   api-tarjetas:
     image: ezequielmartellotto/api-tarjetas:1.0.0
@@ -109,11 +115,16 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - api-tarjetas
-      - api-pagos
-      - api-clientes
-      - api-transacciones
-      - api-facturas
+      api-tarjetas:
+        condition: service_started
+      api-pagos:
+        condition: service_started
+      api-clientes:
+        condition: service_started
+      api-transacciones:
+        condition: service_started
+      api-facturas:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
