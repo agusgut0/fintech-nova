@@ -97,4 +97,8 @@
 - **Causa:** En Alpine Linux (`nginx:1.25-alpine`), `/var/run` es un enlace simbólico (*symlink*) que apunta a `/run`. El comando `chown -R nginx:nginx /var/run` no modifica los permisos del directorio destino `/run` (que sigue perteneciendo a `root`), por lo que el proceso ejecutado bajo `USER nginx` no tiene permisos para crear el archivo `nginx.pid`.
 - **Solución:** Crear previamente el archivo `nginx.pid` en tiempo de build y asignarle permisos al usuario `nginx` (junto con `/etc/nginx/conf.d`) en el `Dockerfile`: `RUN touch /var/run/nginx.pid && chown -R nginx:nginx /var/cache/nginx /var/run/nginx.pid /var/log/nginx /etc/nginx/conf.d`.
 
-
+## Control de versiones y formato de archivos
+### 20. Error imagen publicada en Docker Hub con scripts de inicialización en formato CRLF
+- **Error** La imagen publicada en Docker Hub no creaba las bases ni las tablas.
+- **Causa** los scripts de inicialización tenían CRLF y el COPY los metió así en la imagen. Arreglar el editor o el archivo local no cambia una imagen ya subida. Además, Git en Windows puede reconvertirlos, y esos scripts solo corren con el volumen vacío.
+- **Solucion** pasar a LF, agregar el .gitattributes, reconstruir y subir con el tag 1.0.1, actualizar el compose y el deploy, borrar el volumen donde ya se inicializó y verificar la imagen.
