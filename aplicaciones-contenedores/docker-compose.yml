@@ -9,6 +9,12 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     restart: always
+    healthcheck:
+      test: ["CMD","healthcheck.sh","--connect","--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -22,7 +28,8 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -37,7 +44,8 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -52,7 +60,8 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -67,7 +76,8 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -83,7 +93,8 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -98,7 +109,6 @@ services:
     networks:
       - fintech_net
     depends_on:
-      - db
       - api-tarjetas
       - api-pagos
       - api-clientes

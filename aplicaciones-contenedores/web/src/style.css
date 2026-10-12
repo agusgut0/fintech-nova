@@ -5,6 +5,13 @@ body {
   padding: 0 1rem;
 }
 
+.integrantes {
+  color: #555;
+  font-size: 0.95rem;
+  margin-top: -0.5rem;
+  margin-bottom: 1.5rem;
+}
+
 nav {
   display: flex;
   gap: 0.5rem;

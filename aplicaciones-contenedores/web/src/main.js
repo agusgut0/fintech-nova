@@ -165,6 +165,13 @@ function render() {
   const header = document.createElement('h1');
   header.textContent = 'FinTech Nova — Panel de Microservicios';
   app.appendChild(header);
+
+  const integrantes = document.createElement('p');
+  integrantes.className = 'integrantes';
+  integrantes.textContent =
+    'Integrantes: Agustin Thomas Gutierrez Ioime · Fabrizio Luis Peveraro · Juan Hernan Orsi Scillia · Ezequiel Martelloto';
+  app.appendChild(integrantes);
+
   app.appendChild(crearNav());
   const main = document.createElement('main');
   ENTIDADES.forEach((entidad) => main.appendChild(crearSeccion(entidad)));

@@ -2,6 +2,7 @@
 .env
 node_modules/
 dist/
-.pem
-.key
-.crt
+*.pem
+*.key
+*.crt
+**/certs/

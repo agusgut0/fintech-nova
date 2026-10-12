@@ -16,7 +16,9 @@
 **Trabajo Práctico DevOps — Grupo 6**  
 *Plataforma bancaria contenerizada con arquitectura de microservicios, aislamiento de red, proxy inverso con TLS y endurecimiento de seguridad (hardening).*
 
-Enunciado: (./Enunciado-TP-Parte-1.md)
+**Integrantes:** Agustin Thomas Gutierrez Ioime • Fabrizio Luis Peveraro • Juan Hernan Orsi Scillia • Ezequiel Martelloto
+
+Enunciado: [Enunciado-TP-Parte-1.md](./Enunciado-TP-Parte-1.md)
 
 [Imágenes en Docker Hub](#-6-imágenes-oficiales-en-docker-hub) • [Arquitectura](#️-2-arquitectura-y-topología-de-red) • [Servicios](#-3-catálogo-de-servicios) • [Seguridad](#️-4-decisiones-de-diseño-y-hardening-de-seguridad) • [Despliegue y Pruebas](#-5-guía-de-despliegue-y-testeo)
 

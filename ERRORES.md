@@ -77,3 +77,24 @@
 - **Error:** En logs del contenedor de la base se generaba un error de interpretacion al iniciar databases.sh, lo que omitia la creacion de las bd
 - **Causa:** mala configuracion del vscode
 - **Solución:** Se cambia opcion CRLF por LF desde la barra inferior y guardamos nuevamente el archivo databases.sh
+
+## Dockerización de web (Frontend Vite + NGINX)
+
+### 17. Error `open Dockerfile: no such file or directory` al construir la imagen `web`
+- **Error:** Al ejecutar `docker build -t 89768/web:1.0.0 .` se obtuvo `ERROR: failed to build: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory`.
+- **Causa:** El comando se ejecutó desde la raíz del repositorio (`/c/devops/enunciado-tp1`) usando `.` como contexto de build, en lugar de ubicarse o apuntar al subdirectorio `aplicaciones-contenedores/web` donde residen el `Dockerfile` y los archivos del servicio.
+- **Solución:** Posicionarse en el directorio del servicio (`cd aplicaciones-contenedores/web`) antes de correr `docker build -t 89768/web:1.0.0 .`, o bien indicar la ruta del contexto directamente: `docker build -t 89768/web:1.0.0 aplicaciones-contenedores/web`.
+
+## Orquestación con Docker Compose
+
+### 18. Error `services.db.healthcheck additional properties 'condition' not allowed`
+- **Error:** Al ejecutar `docker compose pull` se produjo el error de validación `services.db.healthcheck additional properties 'condition' not allowed`.
+- **Causa:** Se colocó la propiedad `condition: service_healthy` dentro del bloque `healthcheck:` del servicio `db`, además de dejar el comando de ejemplo `test: ["executable", "arg"]`. En Docker Compose, `healthcheck` define cómo evaluar la salud del propio contenedor, mientras que `condition: service_healthy` pertenece al bloque `depends_on` de los servicios consumidores.
+- **Solución:** Quitar `condition: service_healthy` de `db.healthcheck`, definir un comando real de chequeo para MariaDB (`test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]`) y configurar `depends_on: { db: { condition: service_healthy } }` en cada una de las APIs.
+
+### 19. Contenedor `web` en bucle de reinicio por `open() "/var/run/nginx.pid" failed (13: Permission denied)`
+- **Error:** Al levantar el stack con `docker compose up -d`, el servicio `web` entraba en estado `Restarting` rechazando conexiones en `https://localhost:8443/`, y `docker logs web` arrojaba `nginx: [emerg] open() "/var/run/nginx.pid" failed (13: Permission denied)`.
+- **Causa:** En Alpine Linux (`nginx:1.25-alpine`), `/var/run` es un enlace simbólico (*symlink*) que apunta a `/run`. El comando `chown -R nginx:nginx /var/run` no modifica los permisos del directorio destino `/run` (que sigue perteneciendo a `root`), por lo que el proceso ejecutado bajo `USER nginx` no tiene permisos para crear el archivo `nginx.pid`.
+- **Solución:** Crear previamente el archivo `nginx.pid` en tiempo de build y asignarle permisos al usuario `nginx` (junto con `/etc/nginx/conf.d`) en el `Dockerfile`: `RUN touch /var/run/nginx.pid && chown -R nginx:nginx /var/cache/nginx /var/run/nginx.pid /var/log/nginx /etc/nginx/conf.d`.
+
+
