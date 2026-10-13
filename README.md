@@ -93,7 +93,7 @@ flowchart TD
 | **`db`** | `mariadb:11.8.9-ubi9` | `3306` | ❌ *Ninguno* | `mysql` | 0.50 CPU / 512 MB |
 | **`api-clientes`** | `python:3.11-slim` → `python:3.11-slim` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
 | **`api-pagos`** | `node:22-alpine3.21` → `alpine:3.21` (nodejs) | `8080` | ❌ *Ninguno* | `app` | 0.30 CPU / 256 MB |
-| **`api-facturas`** | `maven:3.9.6-eclipse-temurin-21-alpine` → `eclipse-temurin:21-jre-alpine` | `8080` | ❌ *Ninguno* | `appuser` | 1.00 CPU / 256 MB |
+| **`api-facturas`** | `maven:3.9.6-eclipse-temurin-21-alpine` → `eclipse-temurin:21-jre-alpine` | `8080` | ❌ *Ninguno* | `appuser` | 2.00 CPU / 256 MB |
 | **`api-transacciones`** | `golang:1.22` → `alpine:3.19` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
 | **`api-tarjetas`** | `mcr.microsoft.com/dotnet/sdk:8.0` → `aspnet:8.0` | `8080` | ❌ *Ninguno* | `appuser` | 0.30 CPU / 256 MB |
 | **`web`** | `node:20-alpine` → `nginx:1.25-alpine` | `8443` (SSL) | ✅ `8443:8443` | `nginx` | 0.30 CPU / 256 MB |
@@ -126,18 +126,32 @@ flowchart TD
 ### E. Gestión de Secretos, Healthchecks y Límites de Cómputo
 * **Cero Secretos Hardcodeados:** Configuración inyectada mediante directivas `env_file` (`<servicio>/.env`), excluidas tanto en `.gitignore` como en `.dockerignore`.
 * **Orquestación de Arranque (`healthcheck`):** Los 5 microservicios esperan a que MariaDB esté completamente inicializada (`service_healthy`), y `web` espera al healthcheck activo de `api-facturas` antes de recibir tráfico.
-* **Protección contra DoS / Saturation:** Límites de recursos (`deploy.resources.limits`) de CPU y RAM en todos los servicios (asignando `1.00 vCPU` a `api-facturas` para absorber la ráfaga de arranque de la JVM y `0.30 vCPU` al resto de las APIs, con un tope de `2048 MB` de RAM total dimensionado para una instancia AWS EC2 `t3.medium`) junto con política `restart: always`.
+* **Protección contra DoS / Saturation:** Límites de recursos (`deploy.resources.limits`) de CPU y RAM en todos los servicios (asignando `2.00 vCPU` a `api-facturas` para absorber la ráfaga de arranque de la JVM y `0.30 vCPU` al resto de las APIs, con un tope de `2048 MB` de RAM total dimensionado para una instancia AWS EC2 `t3.medium`) junto con política `restart: always`.
 
 ---
 
 ## 🚀 5. Guía de Despliegue y Testeo
 
-### Prerrequisitos
+### A. Despliegue Automatizado en AWS EC2 (`deploy.sh`)
+
+El script [`deploy.sh`](./deploy.sh) en la raíz del repositorio automatiza de punta a punta el aprovisionamiento de una instancia **AWS EC2 `t3.medium` (Amazon Linux 2023)** desde cero (instalación de Docker Engine y plugin Compose v2, transferencia segura de `docker-compose.yml` y archivos `.env` vía `scp`, generación del certificado TLS autofirmado en *runtime*, `docker compose pull` + `up -d` y pruebas de validación con `curl -k`):
+
+```bash
+# Completo (incluyendo build local y push a Docker Hub):
+bash deploy.sh <EC2_IP> "<RUTA_CLAVE_PEM>"
+
+# Omitiendo build/push cuando las imágenes ya están publicadas en Docker Hub:
+bash deploy.sh <EC2_IP> "<RUTA_CLAVE_PEM>" --skip-build
+```
+
+### B. Despliegue Manual / Local
+
+#### Prerrequisitos
 * [Docker Engine](https://docs.docker.com/engine/install/) versión 24.0 o superior.
 * [Docker Compose](https://docs.docker.com/compose/) v2.x+.
 * `openssl` y `curl` disponibles en la terminal.
 
-### Pasos para levantar la plataforma
+#### Pasos para levantar la plataforma
 
 1. **Ubicarse en el directorio de contenedores:**
    ```bash
@@ -168,22 +182,38 @@ flowchart TD
    docker compose ps
    ```
 
-### Testeo de Servicios a través del Proxy Web (`https://localhost:8443`)
+### C. Testeo de Servicios a través del Proxy Web (`https://<HOST>:8443`)
 
-Una vez levantados los contenedores, se puede verificar en una sola línea tanto el frontend (`/`) como el ruteo inverso hacia las 5 APIs (`/api/*`) utilizando `curl -k` (para aceptar el certificado autofirmado):
+Una vez levantados los contenedores, se puede verificar tanto el frontend (`/`) como el ruteo inverso hacia las 5 APIs (`/api/*`) utilizando `curl -k` (para aceptar el certificado autofirmado):
 
-* **En Bash / WSL / Linux (EC2):**
+* **Contra la instancia AWS EC2 (o `localhost`):**
   ```bash
-  docker compose up -d && sleep 10 && for ep in / /api/clientes /api/pagos /api/facturas /api/transacciones /api/tarjetas; do echo -e "\n=== Probando $ep ==="; curl -k -s -o /dev/null -w "HTTP Status: %{http_code}\n" "https://localhost:8443$ep"; done
+  for ep in / /api/clientes /api/pagos /api/facturas /api/transacciones /api/tarjetas; do
+    echo -e "\n=== Probando $ep ==="
+    curl -k -i "https://<EC2_IP>:8443$ep"
+  done
   ```
 
 * **En PowerShell (Windows):**
   ```powershell
-  docker compose up -d; Start-Sleep -Seconds 10; "/", "/api/clientes", "/api/pagos", "/api/facturas", "/api/transacciones", "/api/tarjetas" | ForEach-Object { Write-Host "`n=== Probando $_ ===" -ForegroundColor Cyan; curl.exe -k -i "https://localhost:8443$_" }
+  "/", "/api/clientes", "/api/pagos", "/api/facturas", "/api/transacciones", "/api/tarjetas" | ForEach-Object { Write-Host "`n=== Probando $_ ===" -ForegroundColor Cyan; curl.exe -k -i "https://<EC2_IP>:8443$_" }
   ```
 
 * **Desde el navegador web:**
-  Acceder a `https://localhost:8443` y aceptar la advertencia de certificado autofirmado para utilizar la interfaz gráfica de **FinTech Nova**.
+  Acceder a `https://<EC2_IP>:8443` y aceptar la advertencia de certificado autofirmado para utilizar la interfaz gráfica de **FinTech Nova**.
+
+### D. Evidencia de Funcionamiento en AWS EC2
+
+#### 1. Ejecución de `deploy.sh` y estado de los contenedores (`docker compose ps`)
+[captura de pantalla de la terminal ejecutando bash deploy.sh <EC2_IP> "<RUTA_CLAVE_PEM>" --skip-build mostrando los 7 contenedores Up y los 6 chequeos HTTP 200]
+
+#### 2. Pruebas `curl -k` contra los 5 endpoints a través de la IP pública de la EC2 (`:8443`)
+[captura de pantalla de la terminal ejecutando curl -k contra https://<EC2_IP>:8443/api/clientes, /api/pagos, /api/facturas, /api/transacciones y /api/tarjetas mostrando las respuestas JSON]
+
+#### 3. Aplicación Web y ABM funcionando en AWS EC2 (`https://<EC2_IP>:8443`)
+[captura de pantalla del navegador en https://<EC2_IP>:8443 mostrando la portada con los apellidos/nombres de los 4 integrantes del grupo y el ABM de Clientes]
+
+[captura de pantalla del navegador en https://<EC2_IP>:8443 mostrando el ABM de Pagos (con monto_usd calculado por la API externa), Facturas, Transacciones y Tarjetas]
 
 ---
 
