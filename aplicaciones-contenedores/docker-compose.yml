@@ -1,6 +1,6 @@
 services:
   db:
-    image: fabripeveraro/db:1.0.1
+    image: devopsgrupo6/db:1.0.0
     container_name: dbPrincipal
     env_file:
       - db/.env
@@ -21,7 +21,7 @@ services:
           cpus: '0.50'
           memory: 512M
   api-clientes:
-    image: fabripeveraro/api-clientes:1.0.0
+    image: devopsgrupo6/api-clientes:1.0.0
     container_name: api_clientes
     env_file:
       - api-clientes/.env
@@ -37,7 +37,7 @@ services:
           cpus: '0.30'
           memory: 256M
   api-transacciones:
-    image: 89768/api-transacciones:1.0.0
+    image: devopsgrupo6/api-transacciones:1.0.0
     container_name: api-transacciones
     env_file:
       - api-transacciones/.env
@@ -53,7 +53,7 @@ services:
           cpus: '0.30'
           memory: 256M
   api-facturas:
-    image: 89768/api-facturas:1.0.0
+    image: devopsgrupo6/api-facturas:1.0.0
     container_name: api-facturas
     env_file:
       - api-facturas/.env
@@ -75,7 +75,7 @@ services:
           cpus: '2.0'
           memory: 256M
   api-tarjetas:
-    image: ezequielmartellotto/api-tarjetas:1.0.0
+    image: devopsgrupo6/api-tarjetas:1.0.0
     container_name: api_tarjetas
     env_file:
       - api-tarjetas/.env
@@ -91,7 +91,7 @@ services:
           cpus: '0.30'
           memory: 256M
   api-pagos:
-    image: jhorsi/api-pagos:1.0.0
+    image: devopsgrupo6/api-pagos:1.0.0
     container_name: api-pagos
     init: true
     env_file:
@@ -108,7 +108,7 @@ services:
           cpus: '0.30'
           memory: 256M
   web:
-    image: 89768/web:1.0.0
+    image: devopsgrupo6/web:1.0.0
     container_name: web
     ports:
       - "8443:8443"
