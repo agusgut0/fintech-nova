@@ -12,19 +12,19 @@ Los datos corresponden a la sesión de despliegue y validación del stack comple
 |---|---|
 | **Proveedor / Entorno** | AWS Academy Learner Lab (Región `us-east-1` - N. Virginia) |
 | **Nombre / Rol de la Instancia** | FinTech Nova |
-| **ID de la Instancia** | `[completar con el Instance ID i-xxxxxxxxxxxxxxxxx visible en la consola]` |
-| **Dirección IPv4 Pública** | `[completar con la IPv4 pública de la instancia]` |
-| **DNS de IPv4 Pública** | `[completar con el DNS de IPv4 pública de la instancia]` |
+| **ID de la Instancia** | `i-0f32c69bb630cd0da` |
+| **Dirección IPv4 Pública** | `13.221.134.67` |
+| **DNS de IPv4 Pública** | `ec2-13-221-134-67.compute-1.amazonaws.com` |
 | **Sistema Operativo / AMI** | **Amazon Linux 2023** (`al2023-ami` — Kernel `6.18`, arquitectura `x86_64`) |
 | **Tipo de Instancia** | **`t3.medium`** (2 vCPUs, 4 GiB de memoria RAM) |
 | **Par de claves** | **`vockey`** |
 | **Almacenamiento (EBS)** | 8 GiB `gp3` (SSD de uso general) |
-| **Par de Claves SSH (Key Pair)** | `[completar con el nombre del par de claves .pem utilizado]` (RSA) |
+| **Par de Claves SSH (Key Pair)** | `labsuser.pem` (RSA) |
 
 > **Justificación del dimensionamiento (`t3.medium`):** Con 7 contenedores en ejecución simultánea, la suma de los topes de memoria asignados en `docker-compose.yml` alcanza los **2048 MB (2 GiB)**. La instancia `t3.medium` (4 GiB de RAM y 2 vCPUs) garantiza que el sistema operativo host y el demonio de Docker operen con holgura.
 
 ### Evidencia del Resumen de la Instancia en AWS Console
-[captura de pantalla de la consola de AWS EC2 mostrando el panel "Detalles" de la instancia en estado "En ejecución", donde se vean la IP pública, el tipo t3.medium, la AMI Amazon Linux 2023, el VPC ID y el Subnet ID]
+![Resumen de la Instancia EC2](./img/aws-ec2-detalles.png)
 
 ---
 
@@ -34,13 +34,13 @@ La instancia fue desplegada dentro de la VPC predeterminada del entorno con asig
 
 | Recurso de Red | Identificador / Configuración |
 |---|---|
-| **VPC ID** | `[completar con el vpc-xxxxxxxxxxxxxxxxx que figura en la consola]` |
-| **Subnet ID (Subred)** | `[completar con el subnet-xxxxxxxxxxxxxxxxx que figura en la pestaña Detalles/Redes de la instancia]` |
+| **VPC ID** | `vpc-0579eafb43c60bdff` |
+| **Subnet ID (Subred)** | `subnet-06df08530f1c49cf0` |
 | **Zona de Disponibilidad (AZ)** | `us-east-1` (Subred pública con salida a Internet vía Internet Gateway) |
 | **Asignación automática de IP pública** | Habilitada |
 
 ### Evidencia de Configuración de Red en AWS Console
-[captura de pantalla de la configuración de red / pestaña "Redes" de la instancia EC2 mostrando el VPC ID y la subred asignada]
+![Configuración de Red EC2](./img/aws-ec2-redes.png)
 
 ---
 
@@ -52,7 +52,7 @@ Se creó y asoció el grupo de seguridad **`launch-wizard-1`** aplicando el prin
 
 | Tipo | Protocolo | Rango de Puertos | Origen (*Source*) | Propósito / Justificación |
 |---|---|---|---|---|
-| **SSH** | `TCP` | `22` | `[completar con Mi IP x.x.x.x/32]` | Administración remota por SSH y transferencia de `.env` por `scp` restringida exclusivamente a la IP del administrador. |
+| **SSH** | `TCP` | `22` | `<MI_IP>/32` (Mi IP) | Administración remota por SSH y transferencia de `.env` por `scp` restringida exclusivamente a la IP del administrador. |
 | **TCP personalizado (HTTPS)** | `TCP` | `8443` | `0.0.0.0/0` (Cualquier lugar IPv4) | Único punto de entrada público hacia el frontend y proxy inverso NGINX (`web`) con cifrado TLS. |
 
 ### B. Reglas de Salida (*Outbound Rules*)
@@ -62,9 +62,9 @@ Se creó y asoció el grupo de seguridad **`launch-wizard-1`** aplicando el prin
 | **Todo el tráfico (*All traffic*)** | Todos (`All`) | Todos (`All`) | `0.0.0.0/0` | Permite a la instancia descargar paquetes de `dnf`, hacer `docker compose pull` desde Docker Hub y que `api-pagos` (`open.er-api.com`) y `api-transacciones` (`ipapi.co`) consulten sus APIs públicas externas por HTTPS (`443`). |
 
 ### Evidencia del Security Group en AWS Console
-[captura de pantalla de las Reglas de entrada (Inbound rules) del Security Group mostrando únicamente los puertos TCP 22 (Mi IP /32) y TCP 8443 (0.0.0.0/0)]
+![Reglas de Entrada Security Group](./img/aws-security-group-inbound.png)
 
-[captura de pantalla de las Reglas de salida (Outbound rules) del Security Group mostrando All traffic hacia 0.0.0.0/0]
+![Reglas de Salida Security Group](./img/aws-security-group-outbound.png)
 
 ---
 
@@ -115,5 +115,7 @@ Todo el aprovisionamiento previo de la instancia virgen está automatizado de pr
    Desde la máquina local, [`deploy.sh`](./deploy.sh) realiza peticiones `curl -k` contra `https://<EC2_IP>:8443/` y los 5 endpoints `/api/*` verificando que todos respondan `HTTP 200`.
 
 ### Evidencia de Ejecución del Despliegue y Contenedores Activos
-[captura de pantalla de la terminal ejecutando bash deploy.sh <EC2_IP> "<RUTA_CLAVE_PEM>" --skip-build donde se vea la salida de docker compose ps con los 7 contenedores Up y las pruebas curl -k devolviendo HTTP 200]
+![Ejecución de deploy.sh y estado de contenedores](./img/deploy-terminal-ps.png)
+
+![Pruebas Smoke Tests HTTP 200](./img/deploy-terminal-curl.png)
 

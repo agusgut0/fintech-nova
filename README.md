@@ -209,15 +209,17 @@ Una vez levantados los contenedores, se puede verificar tanto el frontend (`/`) 
 ### D. Evidencia de Funcionamiento en AWS EC2
 
 #### 1. Ejecución de `deploy.sh` y estado de los contenedores (`docker compose ps`)
-[captura de pantalla de la terminal ejecutando bash deploy.sh <EC2_IP> "<RUTA_CLAVE_PEM>" --skip-build mostrando los 7 contenedores Up y los 6 chequeos HTTP 200]
+![Ejecución de deploy.sh y estado de contenedores](./img/deploy-terminal-ps.png)
+
+![Pruebas Smoke Tests HTTP 200](./img/deploy-terminal-curl.png)
 
 #### 2. Pruebas `curl -k` contra los 5 endpoints a través de la IP pública de la EC2 (`:8443`)
-[captura de pantalla de la terminal ejecutando curl -k contra https://<EC2_IP>:8443/api/clientes, /api/pagos, /api/facturas, /api/transacciones y /api/tarjetas mostrando las respuestas JSON]
+![Respuestas JSON endpoints](./img/curl-endpoints-json.png)
 
 #### 3. Aplicación Web y ABM funcionando en AWS EC2 (`https://<EC2_IP>:8443`)
-[captura de pantalla del navegador en https://<EC2_IP>:8443 mostrando la portada con los apellidos/nombres de los 4 integrantes del grupo y el ABM de Clientes]
+![Portada FinTech Nova y ABM Clientes](./img/web-portada-clientes.png)
 
-[captura de pantalla del navegador en https://<EC2_IP>:8443 mostrando el ABM de Pagos (con monto_usd calculado por la API externa), Facturas, Transacciones y Tarjetas]
+![ABM de Pagos con cálculo de monto USD](./img/web-abm-pagos-uds.png)
 
 ---
 
