@@ -128,6 +128,10 @@ flowchart TD
 * **Orquestación de Arranque (`healthcheck`):** Los 5 microservicios esperan a que MariaDB esté completamente inicializada (`service_healthy`), y `web` espera al healthcheck activo de `api-facturas` antes de recibir tráfico.
 * **Protección contra DoS / Saturation:** Límites de recursos (`deploy.resources.limits`) de CPU y RAM en todos los servicios (asignando `2.00 vCPU` a `api-facturas` para absorber la ráfaga de arranque de la JVM y `0.30 vCPU` al resto de las APIs, con un tope de `2048 MB` de RAM total dimensionado para una instancia AWS EC2 `t3.medium`) junto con política `restart: always`.
 
+### F. Resiliencia ante APIs externas
+* **`api-pagos` (tipo de cambio):** consulta una API pública (`open.er-api.com`) para calcular `monto_usd` a partir del monto en ARS. La llamada tiene un *timeout* de 5 segundos; si la API no responde, devuelve un error HTTP o no incluye la tasa USD, `convertirArsAUsd()` registra el error en el log y retorna `null`, y el pago se guarda igual con `monto_usd = null`. El ABM no se interrumpe: solo falta el dato enriquecido.
+* **`api-transacciones` (geolocalización):** consulta `ipapi.co` para obtener el país de la IP de origen. Ante un error (por ejemplo `RateLimited`, observado en AWS), `obtenerPais()` lo registra en el log y devuelve una cadena vacía; la transacción se guarda con el campo `pais` vacío (ver [ERRORES.md](./ERRORES.md), error #23).
+
 ---
 
 ## 🚀 5. Guía de Despliegue y Testeo
