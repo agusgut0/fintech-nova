@@ -120,7 +120,6 @@
 ### 23. Campo `pais` vacío en `api-transacciones` al desplegar en AWS EC2 (`RateLimited` en `ipapi.co`)
 - **Error:** Al dar de alta transacciones desde el frontend desplegado en AWS EC2 ingresando primero una IP privada (`192.168.31.1`) y luego una IP pública válida (`8.8.8.8`), los registros se persistían pero con la columna `pais` vacía. Al inspeccionar los logs remotos con `ssh -i "/c/Users/agust/Downloads/fintech-key.pem" ec2-user@54.208.66.109 "sudo docker logs api-transacciones"`, se obtuvo: `La API externa de geolocalizacion devolvio un error: RateLimited`.
 - **Causa:** Por un lado, las direcciones privadas (RFC 1918 como `192.168.31.1`) no son enrutables en Internet y carecen de geolocalización por país; por otro lado, ante IPs públicas válidas (`8.8.8.8`), la API pública gratuita `https://ipapi.co` (sin API Key) aplica límites de tasa (*rate limiting*) compartidos sobre los rangos de direcciones IP de centros de datos de AWS EC2 (`us-east-1`).
-- **Solución:** Se verificó mediante `docker logs` el correcto funcionamiento del diseño de *degradación elegante* (*fallback*) implementado en `geolocation.go`: cuando la API externa devuelve error o `RateLimited`, la función `obtenerPais()` lo registra en el log y retorna `""` en lugar de abortar la petición HTTP, permitiendo que la transacción se guarde en MariaDB sin interrumpir el ABM.
 
 ### 24. Error `Group names may not be in the format sg-*` al crear el Security Group
 - **Error:** Al lanzar la instancia desde la consola de AWS con un grupo de seguridad llamado `sg-tp1`, el asistente rechazó la operación con `Value (sg-tp1) for parameter GroupName is invalid. Group names may not be in the format sg-*`.
@@ -129,25 +128,30 @@
 
 ## Dockerización de api-pagos (Node.js / Express)
 
-### 25. `Connection refused` al probar el servicio con `wget http://localhost:8080`
+### 25. `"/api-pagos/package-lock.json": not found` al construir la imagen
+- **Error:** En el primer build de la imagen (`docker build -t api-pagos:single -f api-pagos/Dockerfile .`), el paso `COPY api-pagos/package.json api-pagos/package-lock.json ./` falló con `failed to calculate checksum of ref ...: "/api-pagos/package-lock.json": not found`.
+- **Causa:** No se había creado el archivo `package-lock.json`. El Dockerfile instala las dependencias con `npm ci`, que exige el archivo de bloqueo para reproducir exactamente las mismas versiones, por lo que no había nada que copiar en ese paso.
+- **Solución:** Generar el archivo con `npm install --package-lock-only` dentro de `api-pagos/` (crea solo el `package-lock.json`, sin instalar `node_modules`), versionarlo en el repositorio y comprobar que `.dockerignore` no lo excluya. Con el archivo presente, `npm ci --omit=dev` instala las mismas versiones en cada build.
+
+### 26. `Connection refused` al probar el servicio con `wget http://localhost:8080`
 - **Error:** Al probar la imagen de `api-pagos` en un contenedor aislado, `wget http://localhost:8080/pagos` devolvía `Connection refused` aunque el servicio estaba levantado.
 - **Causa:** La imagen final está basada en Alpine cuyo `wget`, al resolver `localhost`, intenta primero la dirección IPv6 (`::1`), mientras el servicio escucha en IPv4, por lo que la conexión es rechazada.
 - **Solución:** Usar la dirección IPv4 explícita (`wget http://127.0.0.1:8080/pagos`). 
 
 ## HTTPS y certificados TLS
 
-### 26. Contenedor `web` en bucle de reinicio por certificado inexistente (`cannot load certificate`)
+### 27. Contenedor `web` en bucle de reinicio por certificado inexistente (`cannot load certificate`)
 - **Error:** Al ejecutar `docker compose up -d` el servicio `web` quedaba en estado `Restarting` y `docker logs web` mostraba `nginx: [emerg] cannot load certificate`.
 - **Causa:** No se habían generado los certificados antes de levantar el stack, por lo que la carpeta `certs/` no existía en el host y NGINX no encontraba `cert.pem` ni `key.pem`.
 - **Solución:** Crear la carpeta y generar el par de claves con OpenSSL **antes** de levantar el stack. 
 
-### 27. `Permission denied` al leer `key.pem` desde NGINX
+### 28. `Permission denied` al leer `key.pem` desde NGINX
 - **Error:** Con los certificados ya generados, `web` seguía reiniciándose y los logs indicaban `Permission denied` al cargar la clave privada `key.pem`.
 - **Causa:** OpenSSL crea `key.pem` con permisos `600` y como dueño al usuario del host (uid 1000). El contenedor ejecuta NGINX con `USER nginx` (uid 101), por lo que el proceso de NGINX queda en la categoría "otros", sin ningún permiso.
 - **Solución:** Aplicar `chmod 644 certs/key.pem certs/cert.pem` y reiniciar el servicio. Una alternativa más restrictiva es asignar la clave al uid de NGINX con `sudo chown 101:101 certs/key.pem` y dejarla en `600`.
 
 ## Configuración del entorno local
 
-### 28. `docker compose config` falla por archivos `.env` inexistentes
+### 29. `docker compose config` falla por archivos `.env` inexistentes
 - **Error:** Al ejecutar `docker compose config` (o `up`) en un clon limpio del repositorio, Docker Compose falló indicando que no encontraba el archivo `.env` de un servicio (por ejemplo `api-clientes/.env`).
 - **Causa:** Los `.env` están excluidos en `.gitignore` para no versionar credenciales, por lo que no existen al clonar el repositorio. El compose los referencia mediante `env_file`.
