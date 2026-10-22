@@ -36,13 +36,13 @@ SSH_OPTS="-i $SSH_KEY -o StrictHostKeyChecking=accept-new"
 if [ "$SKIP_BUILD" != "--skip-build" ]; then
     echo "==> Construyendo y subiendo imagenes a Docker Hub..."
     declare -A IMAGES=(
-        ["db"]="fabripeveraro/db:1.0.1"
-        ["api-clientes"]="fabripeveraro/api-clientes:1.0.0"
-        ["api-pagos"]="jhorsi/api-pagos:1.0.0"
-        ["api-facturas"]="89768/api-facturas:1.0.0"
-        ["api-transacciones"]="89768/api-transacciones:1.0.0"
-        ["api-tarjetas"]="ezequielmartellotto/api-tarjetas:1.0.0"
-        ["web"]="89768/web:1.0.0"
+        ["db"]="devopsgrupo6/db:1.0.0"
+        ["api-clientes"]="devopsgrupo6/api-clientes:1.0.0"
+        ["api-pagos"]="devopsgrupo6/api-pagos:1.0.0"
+        ["api-facturas"]="devopsgrupo6/api-facturas:1.0.0"
+        ["api-transacciones"]="devopsgrupo6/api-transacciones:1.0.0"
+        ["api-tarjetas"]="devopsgrupo6/api-tarjetas:1.0.0"
+        ["web"]="devopsgrupo6/web:1.0.0"
     )
 
     for svc in "${!IMAGES[@]}"; do

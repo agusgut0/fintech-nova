@@ -225,20 +225,10 @@ Una vez levantados los contenedores, se puede verificar tanto el frontend (`/`) 
 
 Las imágenes consumidas por `docker-compose.yml` están publicadas en Docker Hub bajo versionado semántico:
 
-* 🗄️ **Base de Datos (`db`):** [`fabripeveraro/db:1.0.1`](https://hub.docker.com/r/fabripeveraro/db)
-* 👤 **API Clientes (`api-clientes`):** [`fabripeveraro/api-clientes:1.0.0`](https://hub.docker.com/r/fabripeveraro/api-clientes)
-* 💸 **API Pagos (`api-pagos`):** [`jhorsi/api-pagos:1.0.0`](https://hub.docker.com/r/jhorsi/api-pagos)
-* 🧾 **API Facturas (`api-facturas`):** [`89768/api-facturas:1.0.0`](https://hub.docker.com/r/89768/api-facturas)
-* 💳 **API Transacciones (`api-transacciones`):** [`89768/api-transacciones:1.0.0`](https://hub.docker.com/r/89768/api-transacciones)
-* 🪪 **API Tarjetas (`api-tarjetas`):** [`ezequielmartellotto/api-tarjetas:1.0.0`](https://hub.docker.com/r/ezequielmartellotto/api-tarjetas)
-* 🌐 **Frontend + Proxy (`web`):** [`89768/web:1.0.0`](https://hub.docker.com/r/89768/web)
-
----
-
-## 📈 7. Posibles Mejoras Futuras
-
-* **Segregación de Usuarios de Base de Datos por Microservicio:** Reemplazar el usuario compartido `app_user` por credenciales exclusivas para cada microservicio (`user_clientes`, `user_pagos`, etc.) con permisos `GRANT` restringidos únicamente a su propio esquema.
-* **Healthchecks en la totalidad de las APIs:** Extender los chequeos de salud activos (actualmente implementados en `db` y `api-facturas`) al resto de los microservicios (`api-clientes`, `api-pagos`, `api-transacciones` y `api-tarjetas`).
-* **Servidor WSGI de Producción para `api-clientes`:** Reemplazar el servidor de desarrollo integrado de Flask (`python main.py`) por `gunicorn` con múltiples *workers* para entornos de alta concurrencia.
-* **Gestión Centralizada de Secretos y Escaneo en CI/CD:** Integrar herramientas de análisis estático de vulnerabilidades de imágenes (como **Trivy** o **Checkov**) en un pipeline CI/CD y migrar los archivos `.env` hacia **AWS Secrets Manager** o **HashiCorp Vault**.
-
+* 🗄️ **Base de Datos (`db`):** [`devopsgrupo6/db:1.0.0`](https://hub.docker.com/r/devopsgrupo6/db)
+* 👤 **API Clientes (`api-clientes`):** [`devopsgrupo6/api-clientes:1.0.0`](https://hub.docker.com/r/devopsgrupo6/api-clientes)
+* 💸 **API Pagos (`api-pagos`):** [`devopsgrupo6/api-pagos:1.0.0`](https://hub.docker.com/r/devopsgrupo6/api-pagos)
+* 🧾 **API Facturas (`api-facturas`):** [`devopsgrupo6/api-facturas:1.0.0`](https://hub.docker.com/r/devopsgrupo6/api-facturas)
+* 💳 **API Transacciones (`api-transacciones`):** [`devopsgrupo6/api-transacciones:1.0.0`](https://hub.docker.com/r/devopsgrupo6/api-transacciones)
+* 🪪 **API Tarjetas (`api-tarjetas`):** [`devopsgrupo6/api-tarjetas:1.0.0`](https://hub.docker.com/r/devopsgrupo6/api-tarjetas)
+* 🌐 **Frontend + Proxy (`web`):** [`devopsgrupo6/web:1.0.0`](https://hub.docker.com/r/devopsgrupo6/web)

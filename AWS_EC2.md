@@ -17,6 +17,7 @@ Los datos corresponden a la sesión de despliegue y validación del stack comple
 | **DNS de IPv4 Pública** | `[completar con el DNS de IPv4 pública de la instancia]` |
 | **Sistema Operativo / AMI** | **Amazon Linux 2023** (`al2023-ami` — Kernel `6.18`, arquitectura `x86_64`) |
 | **Tipo de Instancia** | **`t3.medium`** (2 vCPUs, 4 GiB de memoria RAM) |
+| **Par de claves** | **`vockey`** |
 | **Almacenamiento (EBS)** | 8 GiB `gp3` (SSD de uso general) |
 | **Par de Claves SSH (Key Pair)** | `[completar con el nombre del par de claves .pem utilizado]` (RSA) |
 
