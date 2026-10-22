@@ -11,7 +11,3 @@ db/data/
 !env.example
 
 **/certs/
-
-.agents
-reglas-mentor.md
-planTP.md
