@@ -18,7 +18,7 @@
 
 **Integrantes:** Agustin Thomas Gutierrez Ioime • Fabrizio Luis Peveraro • Juan Hernan Orsi Scillia • Ezequiel Martelloto
 
-Enunciado: [Enunciado-TP-Parte-1.md](./Enunciado-TP-Parte-1.md) • Documentación: [ERRORES.md](./ERRORES.md) | [SEGURIDAD.md](./SEGURIDAD.md) | [AWS_EC2.md](./AWS_EC2.md)
+Enunciados: [Parte 1](./Enunciado-TP-Parte-1.md) | [Parte 2](./Enunciado-TP-Parte-2.md) • Documentación: [ERRORES.md](./ERRORES.md) | [SEGURIDAD.md](./SEGURIDAD.md) | [AWS_EC2.md](./AWS_EC2.md)
 
 [Imágenes en Docker Hub](#-6-imágenes-oficiales-en-docker-hub) • [Arquitectura](#️-2-arquitectura-y-topología-de-red) • [Servicios](#-3-catálogo-de-servicios) • [Seguridad](#️-4-decisiones-de-diseño-y-hardening-de-seguridad) • [Despliegue y Pruebas](#-5-guía-de-despliegue-y-testeo)
 
@@ -237,5 +237,4 @@ Las imágenes consumidas por `docker-compose.yml` están publicadas en Docker Hu
 * **Healthchecks en la totalidad de las APIs:** Extender los chequeos de salud activos (actualmente implementados en `db` y `api-facturas`) al resto de los microservicios (`api-clientes`, `api-pagos`, `api-transacciones` y `api-tarjetas`).
 * **Servidor WSGI de Producción para `api-clientes`:** Reemplazar el servidor de desarrollo integrado de Flask (`python main.py`) por `gunicorn` con múltiples *workers* para entornos de alta concurrencia.
 * **Gestión Centralizada de Secretos y Escaneo en CI/CD:** Integrar herramientas de análisis estático de vulnerabilidades de imágenes (como **Trivy** o **Checkov**) en un pipeline CI/CD y migrar los archivos `.env` hacia **AWS Secrets Manager** o **HashiCorp Vault**.
-
 
