@@ -219,7 +219,7 @@ Una vez levantados los contenedores, se puede verificar tanto el frontend (`/`) 
 #### 3. Aplicación Web y ABM funcionando en AWS EC2 (`https://<EC2_IP>:8443`)
 ![Portada FinTech Nova y ABM Clientes](./img/web-portada-clientes.png)
 
-![ABM de Pagos con cálculo de monto USD](./img/web-abm-pagos-uds.png)
+![ABM de Pagos con cálculo de monto USD](./img/web-abm-pagos-usd.png)
 
 ---
 
