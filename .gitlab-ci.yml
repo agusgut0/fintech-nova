@@ -44,6 +44,8 @@ sast:
 
 build-image:
   stage: build
+  tags:
+    - devops-runner
   image: docker:27.5.1-cli
   services:
     - name: docker:27.5.1-dind
@@ -91,6 +93,8 @@ image-scan:
 
 publish-image:
   stage: publish
+  tags:
+    - devops-runner
   image: docker:27.5.1-cli
   services:
     - name: docker:27.5.1-dind
