@@ -10,10 +10,10 @@ variables:
   ALUMNO: devops-grupo6
   APP_DIR: "aplicaciones-contenedores"
   IMAGE_TAG: "$CI_COMMIT_SHA"
-  DOCKER_HOST: "tcp://docker:2376"
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_TLS_VERIFY: "1"
-  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  DOCKER_HOST: ""
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_TLS_VERIFY: ""
+  DOCKER_CERT_PATH: ""
   RUNNER_TAG: runner-without-dind
 
 yaml-lint:
@@ -53,7 +53,7 @@ build-image:
   image: docker:27.5.1-cli
   services:
     - name: docker:dind
-      alias: docker
+      command: ["--tls=false"]
   parallel:
     matrix:
       - SERVICE:
