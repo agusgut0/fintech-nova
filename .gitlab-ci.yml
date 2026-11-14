@@ -14,7 +14,7 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_TLS_VERIFY: "1"
   DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
-  RUNNER_TAG: shared
+  RUNNER_TAG: arm64-build
 
 yaml-lint:
   stage: validate
@@ -65,8 +65,8 @@ build-image:
           - api-tarjetas
           - web
   script:
-    - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$APP_DIR/$SERVICE"
-    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
+    - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0" "$APP_DIR/$SERVICE"
+    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0"
 
 image-scan:
   stage: security
