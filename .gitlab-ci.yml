@@ -65,6 +65,7 @@ build-image:
           - api-tarjetas
           - web
   script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
     - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0" "$APP_DIR/$SERVICE"
     - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0"
 
