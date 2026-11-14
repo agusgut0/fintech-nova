@@ -46,7 +46,7 @@ build-image:
   stage: build
   tags:
     - devops-runner
-  image: docker:27.5.1-cli
+  image: docker:27.5.1-dind
   services:
     - name: docker:27.5.1-dind
       alias: docker
