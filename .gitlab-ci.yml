@@ -66,6 +66,9 @@ build-image:
           - web
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+    - echo "CI_REGISTRY=$CI_REGISTRY"
+    - echo "CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE"
+    - echo "CI_PROJECT_PATH=$CI_PROJECT_PATH"
     - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0" "$APP_DIR/$SERVICE"
     - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0"
 
