@@ -14,7 +14,7 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_TLS_VERIFY: "1"
   DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
-  RUNNER_TAG: arm64-build
+  RUNNER_TAG: runner-without-dind
 
 yaml-lint:
   stage: validate
@@ -52,7 +52,7 @@ build-image:
   tags: [$RUNNER_TAG]
   image: docker:27.5.1-cli
   services:
-    - name: docker:27.5.1-dind
+    - name: docker:dind
       alias: docker
   parallel:
     matrix:
@@ -101,7 +101,7 @@ publish-image:
   tags: [$RUNNER_TAG]
   image: docker:27.5.1-cli
   services:
-    - name: docker:27.5.1-dind
+    - name: docker:dind
       alias: docker
   parallel:
     matrix:
