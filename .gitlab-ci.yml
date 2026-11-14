@@ -7,6 +7,7 @@ stages:
   - verify
 
 variables:
+  ALUMNO: devops-grupo6
   APP_DIR: "aplicaciones-contenedores"
   IMAGE_TAG: "$CI_COMMIT_SHA"
   DOCKER_HOST: "tcp://docker:2376"
@@ -16,6 +17,8 @@ variables:
 
 yaml-lint:
   stage: validate
+  tags:
+    - runner-without-dind
   image: python:3.12-alpine
   script:
     - pip install --no-cache-dir yamllint==1.35.1
@@ -23,6 +26,8 @@ yaml-lint:
 
 dockerfile-lint:
   stage: validate
+  tags:
+    - runner-without-dind
   image:
     name: hadolint/hadolint:v2.12.0-alpine
     entrypoint: [""]
@@ -31,6 +36,8 @@ dockerfile-lint:
 
 sast:
   stage: security
+  tags:
+    - runner-without-dind
   image:
     name: semgrep/semgrep:1.99.0
     entrypoint: [""]
@@ -45,7 +52,7 @@ sast:
 build-image:
   stage: build
   tags:
-    - docker
+    - runner-without-dind
   image: docker:27.5.1-cli
   services:
     - name: docker:27.5.1-dind
@@ -61,12 +68,13 @@ build-image:
           - api-tarjetas
           - web
   script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
     - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$APP_DIR/$SERVICE"
     - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
 
 image-scan:
   stage: security
+  tags:
+    - runner-without-dind
   image:
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
@@ -94,7 +102,7 @@ image-scan:
 publish-image:
   stage: publish
   tags:
-    - docker
+    - runner-without-dind
   image: docker:27.5.1-cli
   services:
     - name: docker:27.5.1-dind
