@@ -1,6 +1,6 @@
 services:
   db:
-    image: devopsgrupo6/db:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/db:${IMAGE_TAG:-1.0.0}
     container_name: dbPrincipal
     env_file:
       - db/.env
@@ -21,7 +21,7 @@ services:
           cpus: '0.50'
           memory: 512M
   api-clientes:
-    image: devopsgrupo6/api-clientes:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/api-clientes:${IMAGE_TAG:-1.0.0}
     container_name: api_clientes
     env_file:
       - api-clientes/.env
@@ -37,7 +37,7 @@ services:
           cpus: '0.30'
           memory: 256M
   api-transacciones:
-    image: devopsgrupo6/api-transacciones:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/api-transacciones:${IMAGE_TAG:-1.0.0}
     container_name: api-transacciones
     env_file:
       - api-transacciones/.env
@@ -53,7 +53,7 @@ services:
           cpus: '0.30'
           memory: 256M
   api-facturas:
-    image: devopsgrupo6/api-facturas:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/api-facturas:${IMAGE_TAG:-1.0.0}
     container_name: api-facturas
     env_file:
       - api-facturas/.env
@@ -75,7 +75,7 @@ services:
           cpus: '2.0'
           memory: 256M
   api-tarjetas:
-    image: devopsgrupo6/api-tarjetas:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/api-tarjetas:${IMAGE_TAG:-1.0.0}
     container_name: api_tarjetas
     env_file:
       - api-tarjetas/.env
@@ -91,7 +91,7 @@ services:
           cpus: '0.30'
           memory: 256M
   api-pagos:
-    image: devopsgrupo6/api-pagos:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/api-pagos:${IMAGE_TAG:-1.0.0}
     container_name: api-pagos
     init: true
     env_file:
@@ -108,7 +108,7 @@ services:
           cpus: '0.30'
           memory: 256M
   web:
-    image: devopsgrupo6/web:1.0.0
+    image: ${CI_REGISTRY_IMAGE:-devopsgrupo6}/web:${IMAGE_TAG:-1.0.0}
     container_name: web
     ports:
       - "8443:8443"

@@ -1,0 +1,209 @@
+stages:
+  - validate
+  - build
+  - security
+  - publish
+  - deploy
+  - verify
+
+variables:
+  APP_DIR: "aplicaciones-contenedores"
+  IMAGE_TAG: "$CI_COMMIT_SHA"
+  DOCKER_HOST: "tcp://docker:2376"
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: "1"
+  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+
+yaml-lint:
+  stage: validate
+  image: python:3.12-alpine
+  script:
+    - pip install --no-cache-dir yamllint==1.35.1
+    - yamllint -d relaxed .gitlab-ci.yml "$APP_DIR/docker-compose.yml"
+
+dockerfile-lint:
+  stage: validate
+  image:
+    name: hadolint/hadolint:v2.12.0-alpine
+    entrypoint: [""]
+  script:
+    - find "$APP_DIR" -name Dockerfile -print0 | xargs -0 -r hadolint --failure-threshold error
+
+sast:
+  stage: security
+  image:
+    name: semgrep/semgrep:1.99.0
+    entrypoint: [""]
+  script:
+    - semgrep scan --config auto --error --json --output semgrep-report.json .
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - semgrep-report.json
+
+build-image:
+  stage: build
+  image: docker:27.5.1-cli
+  services:
+    - name: docker:27.5.1-dind
+      alias: docker
+  parallel:
+    matrix:
+      - SERVICE:
+          - db
+          - api-clientes
+          - api-pagos
+          - api-facturas
+          - api-transacciones
+          - api-tarjetas
+          - web
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+    - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$APP_DIR/$SERVICE"
+    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
+
+image-scan:
+  stage: security
+  image:
+    name: aquasec/trivy:0.58.2
+    entrypoint: [""]
+  parallel:
+    matrix:
+      - SERVICE:
+          - db
+          - api-clientes
+          - api-pagos
+          - api-facturas
+          - api-transacciones
+          - api-tarjetas
+          - web
+  variables:
+    TRIVY_USERNAME: "$CI_REGISTRY_USER"
+    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
+  script:
+    - trivy image --no-progress --exit-code 1 --severity HIGH,CRITICAL --format json --output "trivy-$SERVICE.json" "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - trivy-*.json
+
+publish-image:
+  stage: publish
+  image: docker:27.5.1-cli
+  services:
+    - name: docker:27.5.1-dind
+      alias: docker
+  parallel:
+    matrix:
+      - SERVICE:
+          - db
+          - api-clientes
+          - api-pagos
+          - api-facturas
+          - api-transacciones
+          - api-tarjetas
+          - web
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+    - docker pull "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
+    - docker tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
+    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
+
+deploy:
+  stage: deploy
+  image: alpine:3.21
+  before_script:
+    - apk add --no-cache openssh-client
+  script:
+    - |
+      set -eu
+      : "${EC2_HOST:?Define EC2_HOST en las variables CI/CD}"
+      : "${EC2_SSH_PRIVATE_KEY:?Define EC2_SSH_PRIVATE_KEY como variable de tipo archivo}"
+      : "${EC2_KNOWN_HOSTS:?Define EC2_KNOWN_HOSTS como variable de tipo archivo}"
+      : "${REGISTRY_DEPLOY_USER:?Define REGISTRY_DEPLOY_USER con acceso de solo lectura al registry}"
+      : "${REGISTRY_DEPLOY_PASSWORD:?Define REGISTRY_DEPLOY_PASSWORD}"
+      : "${DB_ENV_FILE:?Define DB_ENV_FILE como variable de tipo archivo}"
+      : "${API_CLIENTES_ENV_FILE:?Define API_CLIENTES_ENV_FILE como variable de tipo archivo}"
+      : "${API_PAGOS_ENV_FILE:?Define API_PAGOS_ENV_FILE como variable de tipo archivo}"
+      : "${API_FACTURAS_ENV_FILE:?Define API_FACTURAS_ENV_FILE como variable de tipo archivo}"
+      : "${API_TRANSACCIONES_ENV_FILE:?Define API_TRANSACCIONES_ENV_FILE como variable de tipo archivo}"
+      : "${API_TARJETAS_ENV_FILE:?Define API_TARJETAS_ENV_FILE como variable de tipo archivo}"
+
+      chmod 600 "$EC2_SSH_PRIVATE_KEY"
+      SSH_OPTS="-i $EC2_SSH_PRIVATE_KEY -o UserKnownHostsFile=$EC2_KNOWN_HOSTS -o StrictHostKeyChecking=yes"
+      REMOTE="ec2-user@$EC2_HOST"
+      REMOTE_DIR="/home/ec2-user/$APP_DIR"
+
+      ssh $SSH_OPTS "$REMOTE" '
+        set -eu
+        if ! command -v docker >/dev/null 2>&1; then
+          sudo dnf install -y docker openssl
+          sudo systemctl enable --now docker
+          sudo usermod -aG docker ec2-user
+        fi
+        sudo systemctl enable --now docker
+        if ! sudo docker compose version >/dev/null 2>&1; then
+          sudo mkdir -p /usr/libexec/docker/cli-plugins
+          sudo curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
+            -o /usr/libexec/docker/cli-plugins/docker-compose
+          sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+        fi
+        mkdir -p "'"$REMOTE_DIR"'/db" "'"$REMOTE_DIR"'/api-clientes" \
+          "'"$REMOTE_DIR"'/api-pagos" "'"$REMOTE_DIR"'/api-facturas" \
+          "'"$REMOTE_DIR"'/api-transacciones" "'"$REMOTE_DIR"'/api-tarjetas" \
+          "'"$REMOTE_DIR"'/certs"
+      '
+
+      scp $SSH_OPTS "$APP_DIR/docker-compose.yml" "$REMOTE:$REMOTE_DIR/docker-compose.yml"
+      scp $SSH_OPTS "$DB_ENV_FILE" "$REMOTE:$REMOTE_DIR/db/.env"
+      scp $SSH_OPTS "$API_CLIENTES_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-clientes/.env"
+      scp $SSH_OPTS "$API_PAGOS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-pagos/.env"
+      scp $SSH_OPTS "$API_FACTURAS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-facturas/.env"
+      scp $SSH_OPTS "$API_TRANSACCIONES_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-transacciones/.env"
+      scp $SSH_OPTS "$API_TARJETAS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-tarjetas/.env"
+      printf 'CI_REGISTRY_IMAGE=%s\nIMAGE_TAG=%s\n' "$CI_REGISTRY_IMAGE" "$IMAGE_TAG" > deploy.env
+      scp $SSH_OPTS deploy.env "$REMOTE:$REMOTE_DIR/.env"
+      rm -f deploy.env
+
+      printf '%s' "$REGISTRY_DEPLOY_PASSWORD" |
+        ssh $SSH_OPTS "$REMOTE" "sudo docker login '$CI_REGISTRY' --username '$REGISTRY_DEPLOY_USER' --password-stdin"
+      ssh $SSH_OPTS "$REMOTE" "
+        set -eu
+        cd '$REMOTE_DIR'
+        if [ ! -f certs/cert.pem ] || [ ! -f certs/key.pem ]; then
+          sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout certs/key.pem -out certs/cert.pem -subj '/CN=$EC2_HOST'
+          sudo chmod 644 certs/key.pem certs/cert.pem
+          sudo chown ec2-user:ec2-user certs/cert.pem certs/key.pem
+        fi
+        sudo chmod 600 db/.env api-*/.env .env
+        sudo docker compose pull
+        sudo docker compose up -d
+        sudo docker compose ps
+        sudo docker logout '$CI_REGISTRY'
+      "
+  environment:
+    name: production
+  resource_group: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+verify-deployment:
+  stage: verify
+  image: curlimages/curl:8.12.1
+  script:
+    - |
+      set -eu
+      : "${EC2_HOST:?Define EC2_HOST en las variables CI/CD}"
+      for endpoint in / /api/clientes /api/pagos /api/facturas /api/transacciones /api/tarjetas; do
+        status="$(curl --insecure --silent --show-error --output /dev/null --write-out '%{http_code}' \
+          --retry 10 --retry-delay 5 --retry-connrefused "https://$EC2_HOST:8443$endpoint")"
+        echo "$endpoint -> HTTP $status"
+        test "$status" = "200"
+      done
+  needs:
+    - deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
