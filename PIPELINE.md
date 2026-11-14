@@ -58,8 +58,9 @@ repositorio:
 | `API_TRANSACCIONES_ENV_FILE` | Variable de tipo **File** con el entorno de `api-transacciones`. |
 | `API_TARJETAS_ENV_FILE` | Variable de tipo **File** con el entorno de `api-tarjetas`. |
 
-GitLab provee `CI_REGISTRY`, `CI_REGISTRY_IMAGE`, `CI_REGISTRY_USER` y `CI_REGISTRY_PASSWORD`
-para la publicación desde el pipeline. Como el sandbox renueva sus recursos y credenciales al
+GitLab provee `CI_REGISTRY`, `CI_PROJECT_PATH`, `CI_REGISTRY_USER` y `CI_REGISTRY_PASSWORD`.
+El pipeline forma `REGISTRY_IMAGE` con `CI_REGISTRY` y `CI_PROJECT_PATH` para apuntar al
+registry del proyecto. Como el sandbox renueva sus recursos y credenciales al
 iniciar una sesión, hay que actualizar las variables de EC2 y SSH antes de ejecutar el despliegue.
 
 ## Estado

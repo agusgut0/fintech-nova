@@ -15,6 +15,7 @@ variables:
   DOCKER_TLS_VERIFY: ""
   DOCKER_CERT_PATH: ""
   RUNNER_TAG: runner-without-dind
+  REGISTRY_IMAGE: "$CI_REGISTRY/$CI_PROJECT_PATH"
 
 yaml-lint:
   stage: validate
@@ -66,11 +67,8 @@ build-image:
           - web
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
-    - echo "CI_REGISTRY=$CI_REGISTRY"
-    - echo "CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE"
-    - echo "CI_PROJECT_PATH=$CI_PROJECT_PATH"
-    - docker build --pull --tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0" "$APP_DIR/$SERVICE"
-    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-1.0.0"
+    - docker build --pull --tag "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$APP_DIR/$SERVICE"
+    - docker push "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
 
 image-scan:
   stage: security
@@ -92,7 +90,7 @@ image-scan:
     TRIVY_USERNAME: "$CI_REGISTRY_USER"
     TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
   script:
-    - trivy image --no-progress --exit-code 1 --severity HIGH,CRITICAL --format json --output "trivy-$SERVICE.json" "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
+    - trivy image --no-progress --exit-code 1 --severity HIGH,CRITICAL --format json --output "trivy-$SERVICE.json" "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
   artifacts:
     when: always
     expire_in: 1 week
@@ -118,9 +116,9 @@ publish-image:
           - web
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
-    - docker pull "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
-    - docker tag "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
-    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
+    - docker pull "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
+    - docker tag "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
+    - docker push "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
 
 deploy:
   stage: deploy
@@ -174,7 +172,7 @@ deploy:
       scp $SSH_OPTS "$API_FACTURAS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-facturas/.env"
       scp $SSH_OPTS "$API_TRANSACCIONES_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-transacciones/.env"
       scp $SSH_OPTS "$API_TARJETAS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-tarjetas/.env"
-      printf 'CI_REGISTRY_IMAGE=%s\nIMAGE_TAG=%s\n' "$CI_REGISTRY_IMAGE" "$IMAGE_TAG" > deploy.env
+      printf 'REGISTRY_IMAGE=%s\nIMAGE_TAG=%s\n' "$REGISTRY_IMAGE" "$IMAGE_TAG" > deploy.env
       scp $SSH_OPTS deploy.env "$REMOTE:$REMOTE_DIR/.env"
       rm -f deploy.env
 
