@@ -199,13 +199,15 @@ image-scan:
       (echo "$ACCEPTED_CVES" | tr ',' '\n' | tr -d ' ' | grep "^$SERVICE:" | cut -d: -f2 > .trivyignore) || true
       echo "Excepciones aplicadas a $SERVICE:"
       cat .trivyignore
-    # Paso 1: reporte completo con todas las severidades. Nunca corta.
-    - trivy image --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --format json --output "trivy-$SERVICE.json" "$IMAGE"
+    # UNICO escaneo de la imagen (una sola consulta al registry). Genera el reporte en JSON con todas
+    # las severidades que tienen parche. Nunca corta (exit-code 0 por defecto).
+    - trivy image --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignore-unfixed --format json --output "trivy-$SERVICE.json" "$IMAGE"
+    # Todo lo que sigue trabaja sobre el JSON local: no vuelve a tocar el registry ni la base de datos.
     - trivy convert --format table --output "trivy-$SERVICE.txt" "trivy-$SERVICE.json"
-    # Paso 2: muestra en el log el reporte ya generado (evita volver a bajar la imagen del registry)
     - cat "trivy-$SERVICE.txt"
-    # Paso 3: la regla de corte. Falla solo con CRITICAL que ya tiene parche disponible.
-    - trivy image --skip-db-update --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+    # La regla de corte: falla solo con CRITICAL que ya tiene parche (el JSON ya excluye los que no lo tienen).
+    # Aplica tambien .trivyignore, igual que el escaneo.
+    - trivy convert --format table --severity CRITICAL --exit-code 1 "trivy-$SERVICE.json"
   artifacts:
     when: always
     expire_in: 30 days
