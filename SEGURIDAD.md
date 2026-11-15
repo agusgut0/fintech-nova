@@ -106,3 +106,73 @@ Para evitar que una fuga de memoria (*memory leak*), un pico de tráfico o el ar
 | **`web`** | `0.30` vCPU | `256M` | `depends_on: api-facturas (service_healthy)` + resto `service_started` |
 | **Total Máximo de RAM** | — | **2048 MB (2.0 GiB)** | Deja **2.0 GiB libres** para el kernel de Amazon Linux 2023 y el demonio de Docker. |
 
+---
+
+## 4. Seguridad integrada en el pipeline (Parte 2)
+
+Desde la Parte 2 los controles de seguridad no son un paso manual: se ejecutan automáticamente en cada corrida del pipeline de GitLab y, según la política definida más abajo, pueden impedir que una imagen se publique y se despliegue. Los jobs están definidos en el [`.gitlab-ci.yml`](./.gitlab-ci.yml) (`dockerfile-lint` en el stage `validate`; `secret-scan`, `sast`, `dependency-scan` e `image-scan` en el stage `security`).
+
+### 4.1 Herramientas elegidas y por qué
+
+| Categoría | Herramienta | Job | Por qué la elegimos |
+|---|---|---|---|
+| Secretos en el repositorio | Gitleaks | `secret-scan` | Revisa también el **historial** de git: un secreto borrado de un commit sigue siendo recuperable. Es el control que respalda el requisito de cero secretos en el repositorio. |
+| Análisis estático (SAST) | Semgrep | `sast` | Cubre los cinco lenguajes del proyecto (Python, Java, JavaScript, Go y C#) con un único conjunto de reglas y permite filtrar por severidad, lo que hace posible nuestra política de corte. |
+| Buenas prácticas en Dockerfiles | Hadolint | `dockerfile-lint` | Verifica usuario no-root, uso de WORKDIR, pinning y capas. Corre en el stage `validate`, antes del build, para fallar rápido. |
+| Vulnerabilidades en imágenes | Trivy | `image-scan` | Analiza las siete imágenes construidas (sistema operativo y dependencias del binario) en paralelo, una por job. |
+| Dependencias e infraestructura como código | Trivy (modo sistema de archivos) | `dependency-scan` | Suma un análisis de las dependencias declaradas (`requirements.txt`, `package-lock.json`, `go.sum`, `pom.xml`) y de la configuración de los Dockerfiles, sin construir nada. |
+
+Todos los controles se ejecutan en el runner del proyecto y guardan sus reportes como **artifacts** descargables desde el pipeline (JSON y, cuando corresponde, tabla de texto o SARIF), aun cuando el job falla. Como los paneles de seguridad de GitLab no están disponibles en todos los planes, los reportes se exportan como archivos.
+
+Los controles que solo leen código (secretos, SAST, dependencias) arrancan junto con el pipeline y corren en paralelo con el build. Solo el escaneo de imágenes espera a que termine el build, porque necesita las imágenes publicadas con la etiqueta candidata.
+
+### 4.2 Política ante vulnerabilidades
+
+La decisión es **cortar solo lo que tiene una solución accionable hoy** y dejar todo lo demás registrado y visible.
+
+| Control | El pipeline **corta** si… | El pipeline **informa** (no corta) |
+|---|---|---|
+| Secretos | Se detecta cualquier secreto en el historial. | — |
+| SAST | Hay hallazgos de severidad `ERROR`. | `WARNING` e `INFO`. |
+| Dockerfiles | Hay errores, o el último `USER` es root. | Advertencias y sugerencias. |
+| Imágenes | Hay una vulnerabilidad `CRITICAL` **con parche disponible**. | `HIGH`, y `CRITICAL` sin parche. |
+| Dependencias e infraestructura | — (el job queda en estado de advertencia). | `HIGH` y `CRITICAL`. |
+
+Como la publicación de las imágenes finales depende del stage de seguridad, un corte impide publicarlas y, en consecuencia, desplegarlas.
+
+**Justificación.** Un secreto expuesto o una vulnerabilidad crítica con parche son riesgos que se resuelven cambiando algo nuestro (rotar la credencial, actualizar la imagen base), por eso detienen el despliegue. En cambio, una vulnerabilidad crítica en una imagen base oficial que todavía no tiene parche no se puede corregir desde nuestro código: cortar el pipeline solo dejaría la última versión estable sin desplegar y no mejoraría la seguridad. En ese caso se informa, se registra como riesgo aceptado (ver 4.4) y se revisa en cada corrida. Una política más estricta, que corte también por `HIGH`, bloquearía el despliegue con frecuencia por hallazgos sin solución disponible.
+
+### 4.3 Resumen de hallazgos
+
+Análisis ejecutado el 15/11/2026 sobre el commit `3a17ffb`, con las mismas herramientas que usa el pipeline (en el caso de Semgrep, con las reglas públicas del proyecto en lugar del paquete `p/default`, por lo que el resultado en el pipeline puede diferir levemente). **El escaneo de imágenes con Trivy no pudo ejecutarse fuera del pipeline**, por lo que sus resultados se completan en esta sección con la primera corrida en GitLab.
+
+| # | Control | Hallazgo | Estado | Detalle |
+|---|---|---|---|---|
+| 1 | Secretos | 45 commits y todas las ramas analizadas: **ningún secreto detectado**. | Sin hallazgos | Confirma que los `.env` y los certificados nunca llegaron al historial. |
+| 2 | Hadolint | `api-clientes`: `COPY . .` sin `WORKDIR` (copiaba el código a la raíz del sistema de archivos). | **Corregido** | Se agregó `WORKDIR /app` en la etapa de runtime. |
+| 3 | Hadolint | `api-pagos` y `api-transacciones`: paquetes de `apk add` sin versión fija. | Riesgo aceptado | Fijar la versión rompe el build cuando Alpine retira esa versión del repositorio. Se compensa con el escaneo de Trivy en cada build. |
+| 4 | Hadolint | `api-transacciones`: dos `RUN` consecutivos. | Riesgo aceptado | Solo afecta el tamaño de las capas; no tiene impacto de seguridad. |
+| 5 | Semgrep | `api-facturas`: el `ENV JAVA_TOOL_OPTIONS` no estaba entrecomillado y el analizador no pudo interpretarlo. Por la sintaxis de `ENV clave=valor`, solo la primera opción llegaba a `JAVA_TOOL_OPTIONS`. | **Corregido** | Se entrecomilló el valor completo, para que las tres opciones de ajuste de memoria y arranque se apliquen. |
+| 6 | Semgrep | `api-clientes`: el servidor se inicia con `host='0.0.0.0'`. | Riesgo aceptado | Es necesario para que el contenedor reciba tráfico. La API no publica puertos; solo `web` es accesible desde Internet. |
+| 7 | Semgrep | `api-transacciones`: servidor HTTP sin TLS. | Riesgo aceptado | El HTTPS termina en NGINX; el tramo hacia la API ocurre dentro de la red privada `fintech_net`. |
+| 8 | Semgrep | `api-pagos`: sin middleware de protección CSRF. | Falso positivo | Es una API JSON sin cookies ni sesiones, que es el escenario donde ese ataque no aplica. |
+| 9 | Semgrep | Imágenes base referenciadas por etiqueta y no por digest (informativo, todos los Dockerfiles). | Riesgo aceptado | Fijar digests exige un proceso de actualización. Se mitiga con el escaneo de cada imagen. |
+| 10 | Dependencias | `api-pagos`: `body-parser` (severidad alta) y `qs` (moderada) con vulnerabilidades de denegación de servicio. | **Corregido** | Se actualizó `package-lock.json` a `body-parser` 1.20.9 y `qs` 6.16.2, dentro de los rangos que ya admitía el proyecto. Quedó en 0 vulnerabilidades. |
+| 11 | Dependencias | `api-clientes`: Flask 2.3.3, Werkzeug 2.3.7, PyMySQL 1.1.0 y python-dotenv 1.0.1 con 21 avisos conocidos (la mayoría en Werkzeug). | **Pendiente** | Las versiones corregidas son Flask 3.1.3, Werkzeug 3.1.9, PyMySQL 1.1.1 y python-dotenv 1.2.2. Requiere probar la compatibilidad con Flask-MySQL, que es una librería antigua. |
+| 12 | Dependencias | `web`: `vite`/`esbuild` con una vulnerabilidad moderada del servidor de desarrollo. | Riesgo aceptado | Solo existe en la etapa de build; la imagen final contiene únicamente los archivos estáticos compilados y NGINX. |
+| 13 | Revisión manual | `api-clientes/db_config.py` define valores por defecto de usuario y contraseña de base de datos (`testuser`/`testuserpass`) si faltan las variables de entorno. | **Pendiente** | Ninguna herramienta lo detecta como secreto, pero conviene eliminar los valores por defecto para que la aplicación falle si falta la configuración, en lugar de usar credenciales conocidas. |
+| 14 | Revisión manual | `api-clientes` arranca con el servidor de desarrollo de Flask. | **Pendiente** | Reemplazarlo por un servidor de aplicaciones de producción es la mejora recomendada. |
+| 15 | Trivy (imágenes) | A completar con la primera corrida del pipeline. | **Pendiente** | Bases a revisar primero por antigüedad: `alpine:3.19` (`api-transacciones`), `nginx:1.25-alpine` (`web`) y `mcr.microsoft.com/dotnet/aspnet:8.0` (`api-tarjetas`). |
+
+### 4.4 Gestión de los riesgos aceptados
+
+Un riesgo aceptado de Trivy se registra agregando su identificador (CVE) a la variable `ACCEPTED_CVES` del `.gitlab-ci.yml`, y se documenta en la tabla 4.3 con tres datos: la imagen afectada, el motivo (por ejemplo, "sin parche publicado") y una fecha de revisión. No se acepta un riesgo sin justificación escrita.
+
+### 4.5 Dónde ver los resultados
+
+Cada ejecución del pipeline deja los reportes como artifacts de los jobs `secret-scan`, `sast`, `dockerfile-lint`, `dependency-scan` e `image-scan` (un reporte por imagen).
+
+---
+
+## 5. Gestión de secretos en GitLab y autenticación contra el registry
+
