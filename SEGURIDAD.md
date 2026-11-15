@@ -119,7 +119,7 @@ Desde la Parte 2 los controles de seguridad no son un paso manual: se ejecutan a
 | Secretos en el repositorio | Gitleaks | `secret-scan` | Revisa también el **historial** de git: un secreto borrado de un commit sigue siendo recuperable. Es el control que respalda el requisito de cero secretos en el repositorio. |
 | Análisis estático (SAST) | Semgrep | `sast` | Cubre los cinco lenguajes del proyecto (Python, Java, JavaScript, Go y C#) con un único conjunto de reglas y permite filtrar por severidad, lo que hace posible nuestra política de corte. |
 | Buenas prácticas en Dockerfiles | Hadolint | `dockerfile-lint` | Verifica usuario no-root, uso de WORKDIR, pinning y capas. Corre en el stage `validate`, antes del build, para fallar rápido. |
-| Vulnerabilidades en imágenes | Trivy | `image-scan` | Analiza las siete imágenes construidas (sistema operativo y dependencias del binario) en paralelo, una por job. |
+| Vulnerabilidades en imágenes | Trivy | `image-scan` | Analiza las siete imágenes construidas (sistema operativo y dependencias del binario) en paralelo, una por job. Cada imagen se descarga del registry **una sola vez**: el escaneo genera un reporte JSON y de ese mismo archivo salen la tabla del log y la regla de corte (`trivy convert`), sin volver a consultar el registry. |
 | Dependencias e infraestructura como código | Trivy (modo sistema de archivos) | `dependency-scan` | Suma un análisis de las dependencias declaradas (`requirements.txt`, `package-lock.json`, `go.sum`, `pom.xml`) y de la configuración de los Dockerfiles, sin construir nada. |
 
 Todos los controles se ejecutan en el runner del proyecto y guardan sus reportes como **artifacts** descargables desde el pipeline (JSON y, cuando corresponde, tabla de texto o SARIF), aun cuando el job falla. Como los paneles de seguridad de GitLab no están disponibles en todos los planes, los reportes se exportan como archivos.
@@ -135,12 +135,16 @@ La decisión es **cortar solo lo que tiene una solución accionable hoy** y deja
 | Secretos | Se detecta cualquier secreto en el historial. | — |
 | SAST | Hay hallazgos de severidad `ERROR`. | `WARNING` e `INFO`. |
 | Dockerfiles | Hay errores, o el último `USER` es root. | Advertencias y sugerencias. |
-| Imágenes | Hay una vulnerabilidad `CRITICAL` **con parche disponible**. | `HIGH`, y `CRITICAL` sin parche. |
+| Imágenes | Hay una vulnerabilidad `CRITICAL` **con parche disponible**. | Las de severidad menor con parche (`HIGH`, `MEDIUM`, `LOW`), que quedan en el reporte. |
 | Dependencias e infraestructura | — (el job queda en estado de advertencia). | `HIGH` y `CRITICAL`. |
 
 Como la publicación de las imágenes finales depende del stage de seguridad, un corte impide publicarlas y, en consecuencia, desplegarlas.
 
-**Justificación.** Un secreto expuesto o una vulnerabilidad crítica con parche son riesgos que se resuelven cambiando algo nuestro (rotar la credencial, actualizar la imagen base), por eso detienen el despliegue. En cambio, una vulnerabilidad crítica en una imagen base oficial que todavía no tiene parche no se puede corregir desde nuestro código: cortar el pipeline solo dejaría la última versión estable sin desplegar y no mejoraría la seguridad. En ese caso se informa, se registra como riesgo aceptado (ver 4.4) y se revisa en cada corrida. Una política más estricta, que corte también por `HIGH`, bloquearía el despliegue con frecuencia por hallazgos sin solución disponible.
+**Cómo se aplica la regla en las imágenes.** El job `image-scan` ejecuta `trivy image` una única vez, con `--ignore-unfixed` y todas las severidades, y guarda el resultado en un reporte JSON. De ese reporte se obtienen la tabla que se muestra en el log y la regla de corte, que es `trivy convert --severity CRITICAL --exit-code 1`: el job falla solo si el reporte contiene alguna vulnerabilidad `CRITICAL`, y como el reporte ya excluye las que no tienen parche, solo cuentan las corregibles. `trivy convert` no admite `--ignore-unfixed`, por eso el filtro se aplica en el escaneo.
+
+**Limitación conocida.** Como consecuencia de lo anterior, el reporte de las imágenes **no incluye las vulnerabilidades sin parche** (de ninguna severidad), de modo que una crítica sin parche no se ve en los reportes. Se revisan al actualizar las imágenes base. Una mejora posible, que queda pendiente, es conservar el reporte completo y descartar las no corregidas solo en la regla de corte, mediante una política Rego (`--ignore-policy`).
+
+**Justificación.** Un secreto expuesto o una vulnerabilidad crítica con parche son riesgos que se resuelven cambiando algo nuestro (rotar la credencial, actualizar la imagen base), por eso detienen el despliegue. En cambio, una vulnerabilidad crítica en una imagen base oficial que todavía no tiene parche no se puede corregir desde nuestro código: cortar el pipeline solo dejaría la última versión estable sin desplegar y no mejoraría la seguridad, por eso no corta. Una política más estricta, que corte también por `HIGH`, bloquearía el despliegue con frecuencia por hallazgos sin solución disponible.
 
 ### 4.3 Resumen de hallazgos
 
@@ -169,7 +173,8 @@ Análisis ejecutado el 15/11/2026 sobre el commit `3a17ffb`, con las mismas herr
 | 19 | Trivy (imagen `api-facturas`) | `spring-webmvc` 6.1.13: CVE-2026-47884 (ejecución remota de código por limitación incorrecta de ruta en `XsltView`). | Riesgo aceptado | Según Trivy, la corrección solo existe en la versión 7.x, que exige migrar a una versión mayor de Spring Boot. La API solo tiene un `@RestController`, sin vistas ni XSLT, por lo que la función afectada no se usa. Se registra en `ACCEPTED_CVES` con revisión el 15/12/2026. |
 | 20 | Trivy (imagen `db`) | `gosu` (binario de la imagen oficial de MariaDB) compilado con Go 1.24.6: CVE-2025-68121. El sistema operativo de la imagen no tiene hallazgos. | Riesgo aceptado | `gosu` solo se usa al iniciar el contenedor para cambiar de usuario y no establece conexiones TLS, así que la falla no es explotable. Corregirlo depende de que la imagen oficial publique una versión nueva. Se registra en `ACCEPTED_CVES` con revisión el 15/12/2026. |
 | 21 | Trivy (imágenes `api-pagos` y `api-tarjetas`) | Sin vulnerabilidades `CRITICAL` con parche. | Sin hallazgos | Pasaron el control en la primera corrida. |
-| 22 | Pipeline / Trivy | Falla intermitente: en algunos jobs Trivy no reconocía el certificado del registry del labsys (`x509: certificate signed by unknown authority`) y no llegaba a analizar la imagen. | **Corregido** | Cada job descargaba la imagen del registry tres veces. Se eliminó la segunda descarga, reutilizando el reporte ya generado, con lo que quedaron dos y el problema dejó de aparecer. **No se desactivó la verificación TLS** (`TRIVY_INSECURE`). Como respaldo, el job admite cargar una CA adicional mediante la variable de CI/CD `REGISTRY_CA_CERT` (tipo File, certificado público) si el error reaparece. |
+| 22 | Pipeline / Trivy | Falla intermitente: en algunos jobs Trivy no reconocía el certificado del registry del labsys (`x509: certificate signed by unknown authority`) y no llegaba a analizar la imagen. | **Corregido** | Cada job descargaba la imagen del registry tres veces (reporte, tabla y regla de corte), lo que multiplicaba las posibilidades de fallar. Se pasó a **una sola descarga por imagen**: el reporte JSON se genera una vez y la tabla y el corte se calculan desde ese archivo. **No se desactivó la verificación TLS** (`TRIVY_INSECURE`) y no hizo falta cargar ningún certificado adicional. Detalle en `ERRORES.md` (errores 33 y 36). |
+| 23 | Pipeline / Trivy | El reporte de imágenes no incluye las vulnerabilidades sin parche, porque `--ignore-unfixed` se aplica en el escaneo. | **Pendiente** | Se conserva la regla de corte definida en 4.2. Conservar el reporte completo exige una política Rego en el corte; queda como mejora. |
 
 ### 4.4 Gestión de los riesgos aceptados
 
@@ -177,7 +182,7 @@ Un riesgo aceptado de Trivy se registra agregando una entrada `imagen:CVE` a la 
 
 ### 4.5 Dónde ver los resultados
 
-Cada ejecución del pipeline deja los reportes como artifacts de los jobs `secret-scan`, `sast`, `dockerfile-lint`, `dependency-scan` e `image-scan` (un reporte por imagen).
+Cada ejecución del pipeline deja los reportes como artifacts de los jobs `secret-scan`, `sast`, `dockerfile-lint`, `dependency-scan` e `image-scan` (un reporte por imagen, `trivy-<servicio>.json` y `.txt`, que contiene las vulnerabilidades con parche). Los problemas que tuvimos con el pipeline y cómo se resolvieron están en [`ERRORES.md`](./ERRORES.md), errores 31 a 39.
 
 ---
 
