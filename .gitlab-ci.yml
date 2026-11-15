@@ -183,8 +183,7 @@ image-scan:
     # Paso 1: reporte completo con todas las severidades. Nunca corta.
     - trivy image --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --format json --output "trivy-$SERVICE.json" "$IMAGE"
     - trivy convert --format table --output "trivy-$SERVICE.txt" "trivy-$SERVICE.json"
-    # Paso 2: resumen legible en el log del job
-    - trivy image --skip-db-update --severity HIGH,CRITICAL --format table "$IMAGE"
+    - cat "trivy-$SERVICE.txt"
     # Paso 3: la regla de corte. Falla solo con CRITICAL que ya tiene parche disponible.
     - trivy image --skip-db-update --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
   artifacts:
