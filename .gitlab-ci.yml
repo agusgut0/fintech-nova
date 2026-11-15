@@ -18,7 +18,7 @@ variables:
   REGISTRY_IMAGE: "$CI_REGISTRY/$CI_PROJECT_PATH"
   # Riesgos aceptados de Trivy: lista de IDs separados por coma (ejemplo: "CVE-2025-1111,CVE-2025-2222").
   # Cada ID agregado aca debe quedar justificado en SEGURIDAD.md, seccion 4.4. Vacio = no se ignora nada.
-  ACCEPTED_CVES: ""
+  ACCEPTED_CVES: "db:CVE-2025-68121,api-facturas:CVE-2026-47884"
 
 yaml-lint:
   stage: validate

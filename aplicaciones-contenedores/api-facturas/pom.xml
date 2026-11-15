@@ -18,6 +18,8 @@
 
     <properties>
         <java.version>21</java.version>
+         <!-- Version de Tomcat embebido corregida (Trivy: 8 CVE CRITICAL en 10.1.30) -->
+        <tomcat.version>10.1.61</tomcat.version>
     </properties>
 
     <dependencies>

@@ -14,6 +14,9 @@ RUN npm run build
 # Runtime
 FROM nginx:1.25-alpine
 
+# Actualiza libexpat y libxml2: Trivy detecto 3 vulnerabilidades CRITICAL con parche disponible
+RUN apk add --no-cache --upgrade libexpat libxml2
+
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
