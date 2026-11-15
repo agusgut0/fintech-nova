@@ -16,8 +16,11 @@ variables:
   DOCKER_CERT_PATH: ""
   RUNNER_TAG: runner-without-dind
   REGISTRY_IMAGE: "$CI_REGISTRY/$CI_PROJECT_PATH"
-  # Riesgos aceptados de Trivy: lista de IDs separados por coma (ejemplo: "CVE-2025-1111,CVE-2025-2222").
-  # Cada ID agregado aca debe quedar justificado en SEGURIDAD.md, seccion 4.4. Vacio = no se ignora nada.
+  # Riesgos aceptados de Trivy. Formato: "imagen:CVE", separados por coma. Cada entrada aplica
+  # SOLO a esa imagen. Cada una debe estar justificada en SEGURIDAD.md (secciones 4.3 y 4.4).
+  #  - db:CVE-2025-68121           gosu (binario Go de la imagen oficial de MariaDB) no usa TLS. Revisar: 2026-12-15.
+  #  - api-facturas:CVE-2026-47884 spring-webmvc: la correccion solo existe en la version 7.x (cambio
+  #                                mayor de Spring Boot) y la API no usa vistas XSLT. Revisar: 2026-12-15.
   ACCEPTED_CVES: "db:CVE-2025-68121,api-facturas:CVE-2026-47884"
 
 yaml-lint:
@@ -110,7 +113,9 @@ dependency-scan:
     paths:
       - .trivycache/
   script:
-    - echo "$ACCEPTED_CVES" | tr ',' '\n' > .trivyignore
+    # Riesgos aceptados para dependencias (entradas "dependencias:CVE")
+    - |
+      (echo "$ACCEPTED_CVES" | tr ',' '\n' | tr -d ' ' | grep "^dependencias:" | cut -d: -f2 > .trivyignore) || true
     - trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --format json --output trivy-fs-report.json .
     - trivy convert --format table --output trivy-fs-report.txt trivy-fs-report.json
     - cat trivy-fs-report.txt
@@ -176,13 +181,28 @@ image-scan:
     paths:
       - .trivycache/
   script:
+    # Confianza en el certificado del registry SIN desactivar la verificacion de TLS.
+    # Algunos runners no reconocen la CA del registry del labsys (error "x509: certificate signed by
+    # unknown authority"). Se arma una lista de CAs de confianza = las del sistema + la del registry,
+    # que se carga en la variable de CI/CD REGISTRY_CA_CERT (tipo File). Si la variable no existe,
+    # el job sigue funcionando con las CAs del sistema.
+    - cat /etc/ssl/certs/ca-certificates.crt > /tmp/ca-bundle.crt
+    - |
+      for ca in "$REGISTRY_CA_CERT" "$CI_SERVER_TLS_CA_FILE"; do
+        if [ -n "$ca" ] && [ -f "$ca" ]; then cat "$ca" >> /tmp/ca-bundle.crt; echo "CA adicional cargada"; fi
+      done
+    - export SSL_CERT_FILE=/tmp/ca-bundle.crt
     - export IMAGE="$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
     - echo "Escaneando $IMAGE"
-    # Riesgos aceptados (ver variable ACCEPTED_CVES arriba): Trivy los ignora
-    - echo "$ACCEPTED_CVES" | tr ',' '\n' > .trivyignore
+    # Riesgos aceptados de ESTA imagen (variable ACCEPTED_CVES arriba): Trivy los ignora
+    - |
+      (echo "$ACCEPTED_CVES" | tr ',' '\n' | tr -d ' ' | grep "^$SERVICE:" | cut -d: -f2 > .trivyignore) || true
+      echo "Excepciones aplicadas a $SERVICE:"
+      cat .trivyignore
     # Paso 1: reporte completo con todas las severidades. Nunca corta.
     - trivy image --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --format json --output "trivy-$SERVICE.json" "$IMAGE"
     - trivy convert --format table --output "trivy-$SERVICE.txt" "trivy-$SERVICE.json"
+    # Paso 2: muestra en el log el reporte ya generado (evita volver a bajar la imagen del registry)
     - cat "trivy-$SERVICE.txt"
     # Paso 3: la regla de corte. Falla solo con CRITICAL que ya tiene parche disponible.
     - trivy image --skip-db-update --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
