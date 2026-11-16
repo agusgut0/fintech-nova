@@ -26,10 +26,13 @@ flowchart LR
   paralelo. Los reportes JSON de ambos controles quedan disponibles como artifacts por una semana.
 - **publish:** si los controles anteriores pasan, etiqueta y publica las imágenes con el SHA
   completo del commit. Así, cada despliegue queda vinculado a una revisión concreta y no depende
-  de `latest`.
+  de `latest`. En la rama por defecto, además, sube las imágenes aprobadas a Docker Hub
+  (`devopsgrupo6`): la EC2 no puede acceder al registry del labsys, que solo existe dentro de la
+  red de la facultad. Las imágenes candidatas nunca salen del registry interno.
 - **deploy:** solo se ejecuta en la rama por defecto. Se conecta por SSH a EC2, instala Docker y
-  Compose si hace falta, copia el Compose y los archivos de entorno, inicia sesión al registry con
-  credenciales de solo lectura y levanta los servicios.
+  Compose si hace falta, copia el Compose y los archivos de entorno, inicia sesión en Docker Hub
+  con un token de solo lectura, descarga las imágenes y levanta los servicios. El cierre de sesión
+  se ejecuta siempre, aunque el despliegue falle, para no dejar la credencial guardada en la EC2.
 - **verify:** prueba por HTTPS (`8443`) la web y los endpoints de las cinco APIs. El job falla si
   cualquiera no devuelve HTTP 200.
 
@@ -49,8 +52,9 @@ repositorio:
 | `EC2_HOST` | Dirección IP o hostname actual de la instancia del sandbox. |
 | `EC2_SSH_PRIVATE_KEY` | Variable de tipo **File** con la clave SSH privada de EC2. |
 | `EC2_KNOWN_HOSTS` | Variable de tipo **File** con la clave pública verificada del host. |
-| `REGISTRY_DEPLOY_USER` | Usuario de deploy token con permiso de solo lectura del registry. |
-| `REGISTRY_DEPLOY_PASSWORD` | Contraseña/token de ese usuario; enmascarada. |
+| `DOCKERHUB_USER` | Usuario de la cuenta de Docker Hub del grupo. Visible y protegida. |
+| `DOCKERHUB_PUSH_TOKEN` | Token de acceso de Docker Hub con permiso **Read & Write** y vencimiento. Solo lo usa `publish`. Enmascarado, oculto y protegido. |
+| `DOCKERHUB_PULL_TOKEN` | Token de acceso de Docker Hub con permiso **Read-only** y vencimiento. Limitado al entorno `production`, así que solo lo recibe `deploy`. Enmascarado, oculto y protegido. |
 | `DB_ENV_FILE` | Variable de tipo **File** con la configuración de MariaDB. |
 | `API_CLIENTES_ENV_FILE` | Variable de tipo **File** con el entorno de `api-clientes`. |
 | `API_PAGOS_ENV_FILE` | Variable de tipo **File** con el entorno de `api-pagos`. |
@@ -60,7 +64,10 @@ repositorio:
 
 GitLab provee `CI_REGISTRY`, `CI_PROJECT_PATH`, `CI_REGISTRY_USER` y `CI_REGISTRY_PASSWORD`.
 El pipeline forma `REGISTRY_IMAGE` con `CI_REGISTRY` y `CI_PROJECT_PATH` para apuntar al
-registry del proyecto. Como el sandbox renueva sus recursos y credenciales al
+registry del proyecto, donde se guardan y escanean las imágenes candidatas. La cuenta de Docker
+Hub (`DOCKERHUB_NAMESPACE`) está definida en el `.gitlab-ci.yml` porque no es un secreto. Los
+tokens de Docker Hub son variables protegidas: solo existen en los pipelines de la rama por
+defecto, por eso la publicación en Docker Hub se omite en las demás ramas. Como el sandbox renueva sus recursos y credenciales al
 iniciar una sesión, hay que actualizar las variables de EC2 y SSH antes de ejecutar el despliegue.
 
 ## Estado
