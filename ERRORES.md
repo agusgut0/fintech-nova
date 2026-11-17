@@ -198,3 +198,8 @@
 - **Error:** Hadolint advirtió que el Dockerfile de `api-clientes` ejecutaba `COPY . .` en la etapa de runtime sin haber definido un `WORKDIR`.
 - **Causa:** Sin `WORKDIR`, el directorio de trabajo es la raíz del sistema de archivos, así que el código (y los demás archivos del contexto de build) se copiaba a `/`.
 - **Solución:** Agregar `WORKDIR /app` antes del `COPY . .` en la etapa `runtime`.
+
+### 39. El registry del labsys no es accesible desde la EC2
+- **Error:** Al preparar el despliegue, el nombre del registry del labsys no se pudo resolver desde fuera de la facultad: `nslookup` contra un DNS público devolvió `Non-existent domain`. La EC2 está en AWS, así que no habría podido hacer `docker pull` de las imágenes, sin importar la credencial usada.
+- **Causa:** El registry solo existe dentro de la red de la facultad. Los runners del labsys lo alcanzan, pero una máquina externa no (coincide con el `Host desconocido` del error 33).
+- **Solución:** El build y el escaneo siguen contra el registry interno, y `publish` sube a Docker Hub solo las imágenes que pasaron el stage `security`. La EC2 las descarga de Docker Hub con un token de solo lectura y con vencimiento.
