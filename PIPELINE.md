@@ -30,11 +30,16 @@ flowchart LR
   (`devopsgrupo6`): la EC2 no puede acceder al registry del labsys, que solo existe dentro de la
   red de la facultad. Las imágenes candidatas nunca salen del registry interno.
 - **deploy:** solo se ejecuta en la rama por defecto. Se conecta por SSH a EC2, instala Docker y
-  Compose si hace falta, copia el Compose y los archivos de entorno, inicia sesión en Docker Hub
+  el plugin de Compose si hace falta (en versión fija, `v5.5.1`, verificando su checksum SHA-256
+  antes de instalarlo), copia el Compose y los archivos de entorno (quitando los saltos de línea
+  CRLF de Windows), inicia sesión en Docker Hub
   con un token de solo lectura, descarga las imágenes y levanta los servicios. El cierre de sesión
   se ejecuta siempre, aunque el despliegue falle, para no dejar la credencial guardada en la EC2.
 - **verify:** prueba por HTTPS (`8443`) la web y los endpoints de las cinco APIs. El job falla si
-  cualquiera no devuelve HTTP 200.
+  cualquiera no devuelve HTTP 200, o si el puerto `80` responde (debe estar cerrado). El entorno
+  `production` muestra en GitLab (Operate → Environments) el enlace a la aplicación desplegada.
+- **runners:** `deploy` y `verify` usan el mismo tag de runner (`runner-without-dind`) que el resto
+  del pipeline.
 
 El escaneo de Trivy corta el flujo ante vulnerabilidades **HIGH** o **CRITICAL**. Semgrep también
 falla ante los hallazgos que reporta con la configuración automática seleccionada. Un fallo en
