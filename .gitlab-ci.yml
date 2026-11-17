@@ -16,6 +16,9 @@ variables:
   DOCKER_CERT_PATH: ""
   RUNNER_TAG: runner-without-dind
   REGISTRY_IMAGE: "$CI_REGISTRY/$CI_PROJECT_PATH"
+  # Cuenta de Docker Hub donde se publican las imagenes aprobadas. No es un secreto (es publica):
+  # los tokens van como variables de CI/CD enmascaradas y protegidas (DOCKERHUB_*_TOKEN).
+  DOCKERHUB_NAMESPACE: devopsgrupo6
   # Riesgos aceptados de Trivy. Formato: "imagen:CVE", separados por coma. Cada entrada aplica
   # SOLO a esa imagen. Cada una debe estar justificada en SEGURIDAD.md (secciones 4.3 y 4.4).
   #  - db:CVE-2025-68121           gosu (binario Go de la imagen oficial de MariaDB) no usa TLS. Revisar: 2026-12-15.
@@ -233,10 +236,22 @@ publish-image:
           - api-tarjetas
           - web
   script:
+    # Re-etiqueta la imagen aprobada en el registry interno del labsys (como antes)
     - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
     - docker pull "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate"
     - docker tag "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
     - docker push "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG"
+    # Publica en Docker Hub SOLO la imagen que paso el stage security. La EC2 no llega al
+    # registry del labsys (solo existe dentro de la red de la facultad), por eso se usa Docker Hub.
+    # Solo en la rama default: el token es una variable protegida y no existe en otras ramas.
+    - |
+      if [ "$CI_COMMIT_BRANCH" != "$CI_DEFAULT_BRANCH" ]; then
+        echo "Rama $CI_COMMIT_BRANCH: no se publica en Docker Hub"; exit 0
+      fi
+      echo "$DOCKERHUB_PUSH_TOKEN" | docker login --username "$DOCKERHUB_USER" --password-stdin
+      docker tag "$REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG-candidate" "$DOCKERHUB_NAMESPACE/$SERVICE:$IMAGE_TAG"
+      docker push "$DOCKERHUB_NAMESPACE/$SERVICE:$IMAGE_TAG"
+      docker logout
 
 deploy:
   stage: deploy
@@ -249,8 +264,9 @@ deploy:
       : "${EC2_HOST:?Define EC2_HOST en las variables CI/CD}"
       : "${EC2_SSH_PRIVATE_KEY:?Define EC2_SSH_PRIVATE_KEY como variable de tipo archivo}"
       : "${EC2_KNOWN_HOSTS:?Define EC2_KNOWN_HOSTS como variable de tipo archivo}"
-      : "${REGISTRY_DEPLOY_USER:?Define REGISTRY_DEPLOY_USER con acceso de solo lectura al registry}"
-      : "${REGISTRY_DEPLOY_PASSWORD:?Define REGISTRY_DEPLOY_PASSWORD}"
+      # Credenciales de Docker Hub de SOLO LECTURA (la EC2 solo baja imagenes, nunca sube)
+      : "${DOCKERHUB_USER:?Define DOCKERHUB_USER en las variables CI/CD}"
+      : "${DOCKERHUB_PULL_TOKEN:?Define DOCKERHUB_PULL_TOKEN (token de solo lectura)}"
       : "${DB_ENV_FILE:?Define DB_ENV_FILE como variable de tipo archivo}"
       : "${API_CLIENTES_ENV_FILE:?Define API_CLIENTES_ENV_FILE como variable de tipo archivo}"
       : "${API_PAGOS_ENV_FILE:?Define API_PAGOS_ENV_FILE como variable de tipo archivo}"
@@ -271,11 +287,20 @@ deploy:
           sudo usermod -aG docker ec2-user
         fi
         sudo systemctl enable --now docker
-        if ! sudo docker compose version >/dev/null 2>&1; then
+        # Plugin de Compose en version FIJA (la misma probada localmente) en vez de "latest",
+        # que cambia sin aviso. Se instala si falta o si la version instalada es otra.
+        COMPOSE_VERSION=v5.5.1
+        if [ "$(sudo docker compose version --short 2>/dev/null)" != "${COMPOSE_VERSION#v}" ]; then
+          ARCH=$(uname -m)
+          cd /tmp
+          curl -fsSLO "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-$ARCH"
+          curl -fsSLO "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-$ARCH.sha256"
+          # Verifica que el binario no fue alterado antes de instalarlo con sudo
+          sha256sum -c "docker-compose-linux-$ARCH.sha256"
           sudo mkdir -p /usr/libexec/docker/cli-plugins
-          sudo curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
-            -o /usr/libexec/docker/cli-plugins/docker-compose
-          sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+          sudo install -m 755 "docker-compose-linux-$ARCH" /usr/libexec/docker/cli-plugins/docker-compose
+          rm -f "docker-compose-linux-$ARCH" "docker-compose-linux-$ARCH.sha256"
+          cd - >/dev/null
         fi
         mkdir -p "'"$REMOTE_DIR"'/db" "'"$REMOTE_DIR"'/api-clientes" \
           "'"$REMOTE_DIR"'/api-pagos" "'"$REMOTE_DIR"'/api-facturas" \
@@ -290,14 +315,18 @@ deploy:
       scp $SSH_OPTS "$API_FACTURAS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-facturas/.env"
       scp $SSH_OPTS "$API_TRANSACCIONES_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-transacciones/.env"
       scp $SSH_OPTS "$API_TARJETAS_ENV_FILE" "$REMOTE:$REMOTE_DIR/api-tarjetas/.env"
-      printf 'REGISTRY_IMAGE=%s\nIMAGE_TAG=%s\n' "$REGISTRY_IMAGE" "$IMAGE_TAG" > deploy.env
+      # La EC2 baja las imagenes de Docker Hub, no del registry del labsys
+      printf 'REGISTRY_IMAGE=%s\nIMAGE_TAG=%s\n' "$DOCKERHUB_NAMESPACE" "$IMAGE_TAG" > deploy.env
       scp $SSH_OPTS deploy.env "$REMOTE:$REMOTE_DIR/.env"
       rm -f deploy.env
 
-      printf '%s' "$REGISTRY_DEPLOY_PASSWORD" |
-        ssh $SSH_OPTS "$REMOTE" "sudo docker login '$CI_REGISTRY' --username '$REGISTRY_DEPLOY_USER' --password-stdin"
-      ssh $SSH_OPTS "$REMOTE" "
+      # Login, pull y up en UNA sola sesion SSH. El token entra por stdin (no queda en el
+      # historial ni en el log). El trap hace el logout aunque el pull o el up fallen,
+      # para no dejar la credencial guardada en la EC2.
+      printf '%s' "$DOCKERHUB_PULL_TOKEN" | ssh $SSH_OPTS "$REMOTE" "
         set -eu
+        trap 'sudo docker logout >/dev/null 2>&1 || true' EXIT
+        sudo docker login --username '$DOCKERHUB_USER' --password-stdin
         cd '$REMOTE_DIR'
         if [ ! -f certs/cert.pem ] || [ ! -f certs/key.pem ]; then
           sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -305,21 +334,26 @@ deploy:
           sudo chmod 644 certs/key.pem certs/cert.pem
           sudo chown ec2-user:ec2-user certs/cert.pem certs/key.pem
         fi
+        # Quita los CRLF de Windows: con un \r al final las variables quedan mal y la DB no arranca
+        sed -i 's/\r$//' db/.env api-*/.env
         sudo chmod 600 db/.env api-*/.env .env
         sudo docker compose pull
         sudo docker compose up -d
         sudo docker compose ps
-        sudo docker logout '$CI_REGISTRY'
       "
   environment:
     name: production
+    # Link a la app en Operate > Environments (boton "Open")
+    url: https://$EC2_HOST:8443
   resource_group: production
+  tags: [$RUNNER_TAG]
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 verify-deployment:
   stage: verify
   image: curlimages/curl:8.12.1
+  tags: [$RUNNER_TAG]
   script:
     - |
       set -eu
@@ -330,6 +364,11 @@ verify-deployment:
         echo "$endpoint -> HTTP $status"
         test "$status" = "200"
       done
+      # El 80 debe estar cerrado: si responde algo (cualquier codigo HTTP), el job falla
+      if curl --silent --max-time 5 --output /dev/null "http://$EC2_HOST:80/"; then
+        echo "ERROR: el puerto 80 responde y deberia estar cerrado"; exit 1
+      fi
+      echo "Puerto 80 cerrado -> OK"
   needs:
     - deploy
   rules:
