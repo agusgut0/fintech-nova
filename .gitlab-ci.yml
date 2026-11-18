@@ -182,6 +182,10 @@ image-scan:
   # candidata que ese stage subio al registry.
   stage: security
   tags: [$RUNNER_TAG]
+  retry:
+    max: 2
+    when:
+      - script_failure
   image:
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
