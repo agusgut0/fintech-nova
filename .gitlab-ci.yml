@@ -347,8 +347,16 @@ deploy:
     url: https://$EC2_HOST:8443
   resource_group: production
   tags: [$RUNNER_TAG]
+  # No usa los reportes de los jobs anteriores: evita descargarlos
+  dependencies: []
   rules:
+    # Deploy MANUAL: el sandbox de AWS esta apagado casi siempre. El pipeline de main corre
+    # hasta publish y deja este job esperando el boton "play", que se aprieta con la EC2
+    # encendida y las variables EC2_* actualizadas. allow_failure: true hace que, mientras
+    # nadie lo ejecute, el pipeline quede en verde en lugar de "blocked".
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
 
 verify-deployment:
   stage: verify
