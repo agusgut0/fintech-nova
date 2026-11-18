@@ -9,16 +9,19 @@ las imágenes del Container Registry del proyecto.
 
 ```mermaid
 flowchart LR
-    V["validate<br/>YAML y Dockerfiles"] --> B["build<br/>7 imágenes en paralelo"]
+    V["validate<br/>YAML, Dockerfiles y Terraform"] --> B["build<br/>7 imágenes en paralelo"]
     B --> S["security<br/>Trivy por imagen"]
     B --> G["security<br/>Semgrep SAST"]
-    S --> P["publish<br/>tags por commit"]
+    S --> P["publish<br/>tags por commit + Docker Hub"]
     G --> P
-    P --> D["deploy<br/>rama default → EC2"]
+    P --> I["infra (manual)<br/>Terraform crea la EC2"]
+    I --> D["deploy<br/>SSH → EC2"]
     D --> T["verify<br/>HTTPS: web y 5 APIs"]
 ```
 
-- **validate:** Yamllint revisa el pipeline y Compose; Hadolint revisa los Dockerfiles.
+- **validate:** Yamllint revisa el pipeline y Compose; Hadolint revisa los Dockerfiles;
+  `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
+  credenciales de AWS.
 - **build:** construye las siete imágenes (`db`, `api-clientes`, `api-pagos`, `api-facturas`,
   `api-transacciones`, `api-tarjetas` y `web`) en paralelo. Las sube al registry con una etiqueta
   candidata asociada al commit.
@@ -29,10 +32,14 @@ flowchart LR
   de `latest`. En la rama por defecto, además, sube las imágenes aprobadas a Docker Hub
   (`devopsgrupo6`): la EC2 no puede acceder al registry del labsys, que solo existe dentro de la
   red de la facultad. Las imágenes candidatas nunca salen del registry interno.
-- **deploy:** solo se ejecuta en la rama por defecto y es **manual**: el pipeline corre hasta
+- **infra:** solo en la rama por defecto y **manual** (`infra-apply`): el pipeline corre hasta
   `publish` y deja el despliegue esperando, porque el sandbox de AWS está apagado la mayor parte
-  del tiempo. Se ejecuta con la instancia encendida y las variables de EC2 actualizadas. Mientras
-  no se ejecuta, el pipeline queda en verde; si se ejecuta y falla, `verify` también falla. Se conecta por SSH a EC2, instala Docker y
+  del tiempo. Mientras no se ejecuta, el pipeline queda en verde. Al ejecutarlo, Terraform crea en
+  el sandbox el Security Group, la llave SSH y la instancia EC2 (ver [`AWS_EC2.md`](./AWS_EC2.md)).
+  Después lee la clave pública del host desde el registro del sistema de la instancia, por la
+  API de AWS, y se la pasa a `deploy` junto con la IP. Si la infraestructura ya existe en esa
+  sesión, no crea nada nuevo. `infra-destroy` (manual y opcional) borra todo.
+- **deploy:** corre automáticamente después de `infra-apply`. Se conecta por SSH a EC2, instala Docker y
   el plugin de Compose si hace falta (en versión fija, `v5.5.1`, verificando su checksum SHA-256
   antes de instalarlo), copia el Compose y los archivos de entorno (quitando los saltos de línea
   CRLF de Windows), inicia sesión en Docker Hub
@@ -41,8 +48,8 @@ flowchart LR
 - **verify:** prueba por HTTPS (`8443`) la web y los endpoints de las cinco APIs. El job falla si
   cualquiera no devuelve HTTP 200, o si el puerto `80` responde (debe estar cerrado). El entorno
   `production` muestra en GitLab (Operate → Environments) el enlace a la aplicación desplegada.
-- **runners:** `deploy` y `verify` usan el mismo tag de runner (`runner-without-dind`) que el resto
-  del pipeline.
+  Si `deploy` falla, `verify` no corre y el pipeline queda en rojo.
+- **runners:** todos los jobs usan el mismo tag de runner (`runner-without-dind`).
 
 El escaneo de Trivy corta el flujo ante vulnerabilidades **HIGH** o **CRITICAL**. Semgrep también
 falla ante los hallazgos que reporta con la configuración automática seleccionada. Un fallo en
@@ -57,9 +64,11 @@ repositorio:
 
 | Variable | Tipo / contenido |
 |---|---|
-| `EC2_HOST` | Dirección IP o hostname actual de la instancia del sandbox. |
-| `EC2_SSH_PRIVATE_KEY` | Variable de tipo **File** con la clave SSH privada de EC2. |
-| `EC2_KNOWN_HOSTS` | Variable de tipo **File** con la clave pública verificada del host. |
+| `AWS_ACCESS_KEY_ID` | Credencial del sandbox (AWS Details → AWS CLI). **Se actualiza en cada sesión.** Enmascarada, protegida y limitada al entorno `production`. |
+| `AWS_SECRET_ACCESS_KEY` | Ídem. |
+| `AWS_SESSION_TOKEN` | Ídem. |
+| `TF_VAR_admin_cidr` | Opcional. IP `/32` de un integrante que necesite entrar por SSH a la instancia. |
+| `EC2_SSH_PRIVATE_KEY` | Variable de tipo **File** con la llave SSH privada del deploy. Su llave pública es [`infra/deploy-key.pub`](./infra/deploy-key.pub). |
 | `DOCKERHUB_USER` | Usuario de la cuenta de Docker Hub del grupo. Visible y protegida. |
 | `DOCKERHUB_PUSH_TOKEN` | Token de acceso de Docker Hub con permiso **Read & Write** y vencimiento. Solo lo usa `publish`. Enmascarado, oculto y protegido. |
 | `DOCKERHUB_PULL_TOKEN` | Token de acceso de Docker Hub con permiso **Read-only** y vencimiento. Limitado al entorno `production`, así que solo lo recibe `deploy`. Enmascarado, oculto y protegido. |
@@ -75,12 +84,17 @@ El pipeline forma `REGISTRY_IMAGE` con `CI_REGISTRY` y `CI_PROJECT_PATH` para ap
 registry del proyecto, donde se guardan y escanean las imágenes candidatas. La cuenta de Docker
 Hub (`DOCKERHUB_NAMESPACE`) está definida en el `.gitlab-ci.yml` porque no es un secreto. Los
 tokens de Docker Hub son variables protegidas: solo existen en los pipelines de la rama por
-defecto, por eso la publicación en Docker Hub se omite en las demás ramas. Como el sandbox renueva sus recursos y credenciales al
-iniciar una sesión, hay que actualizar las variables de EC2 y SSH antes de ejecutar el despliegue.
+defecto, por eso la publicación en Docker Hub se omite en las demás ramas.
+
+El estado de Terraform se guarda en GitLab (Operate → Terraform states), no en AWS, porque el
+sandbox borra sus recursos en cada relanzamiento. `infra-apply` se autentica contra ese estado con
+el token del job (`CI_JOB_TOKEN`), así que no requiere otra credencial.
+
+Al iniciar cada sesión del sandbox solo hay que actualizar las tres variables `AWS_*` y ejecutar
+`infra-apply`. El procedimiento completo está en [`AWS_EC2.md`](./AWS_EC2.md).
 
 ## Estado
 
-La estructura YAML, la correspondencia de servicios entre Compose y las matrices del pipeline, y
-la configuración local de Compose fueron validadas. El pipeline completo todavía debe ejecutarse
-en GitLab con el runner, las variables y una instancia activa del sandbox; las imágenes y la
-verificación de despliegue dependen de esos recursos.
+El pipeline de la rama por defecto se ejecutó completo hasta `publish`: las siete imágenes se
+publicaron en Docker Hub. La etapa `infra` y el despliegue con Terraform requieren una sesión
+activa del sandbox para su primera ejecución.

@@ -11,3 +11,10 @@ db/data/
 !env.example
 
 **/certs/
+
+# Terraform: cache del provider y estado local (el estado real vive en GitLab)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log

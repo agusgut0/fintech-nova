@@ -186,6 +186,50 @@ Cada ejecución del pipeline deja los reportes como artifacts de los jobs `secre
 
 ---
 
-## 5. Gestión de secretos en GitLab y autenticación contra el registry
+## 5. Gestión de secretos en GitLab y autenticación del despliegue
 
-> 🚧 **A completar por quien tenga a su cargo el despliegue (Parte C):** variables de CI/CD enmascaradas y protegidas, deploy token de solo lectura y autenticación de la EC2 contra el registry.
+Ningún secreto está en el repositorio ni en el `.gitlab-ci.yml`: el YAML solo nombra las variables, y GitLab inyecta su valor al ejecutar el job. La lista completa está en [`PIPELINE.md`](./PIPELINE.md#configuración-necesaria-en-gitlab).
+
+### 5.1 Cómo se protegen las variables de CI/CD
+
+| Protección | Qué hace | Variables |
+|---|---|---|
+| **Protegida** | Solo existe en los pipelines de ramas protegidas (`main`). Un pipeline de otra rama no la recibe. | Todas las de despliegue |
+| **Limitada al entorno `production`** | Solo la reciben los jobs que declaran ese entorno (`infra-apply`, `infra-destroy` y `deploy`). Los linters, escaneos y builds nunca la ven. | Credenciales de AWS, token de lectura de Docker Hub, llave SSH y archivos `.env` |
+| **Enmascarada** | Si el valor aparece en un log, GitLab lo reemplaza por `[MASKED]`. | Tokens de Docker Hub y credenciales de AWS |
+| **Oculta** | Ni siquiera un mantenedor puede volver a ver el valor en la configuración. | Tokens de Docker Hub |
+| **Tipo File** | El job recibe la ruta de un archivo temporal, no el contenido, así que el valor no se imprime al usarlo. | Llave SSH y los seis `.env` |
+
+GitLab no permite enmascarar valores de varias líneas, como la llave SSH o los `.env`. Para esas variables, la protección es la combinación de tipo **File**, **protegida** y **limitada a `production`**.
+
+### 5.2 Credenciales de AWS
+
+- Son las credenciales temporales del sandbox (AWS Details → AWS CLI). Vencen al cerrarse la sesión, así que una filtración tiene una ventana corta.
+- Se actualizan al inicio de cada sesión. No se automatiza porque AWS Academy no permite crear usuarios IAM ni proveedores de identidad (OIDC), que son la forma estándar de evitar credenciales cargadas a mano.
+- Terraform las lee de las variables de entorno: no aparecen en los archivos de [`infra/`](./infra/).
+- El estado de Terraform se guarda en GitLab, accesible solo para los miembros del proyecto. El pipeline se autentica contra él con el token del job (`CI_JOB_TOKEN`), que vence al terminar el job.
+
+### 5.3 Acceso SSH a la instancia
+
+- El pipeline usa una **llave propia del deploy** (`ed25519`). La privada vive solo en la variable `EC2_SSH_PRIVATE_KEY`; la pública está en [`infra/deploy-key.pub`](./infra/deploy-key.pub) y Terraform la registra en AWS.
+- El puerto 22 se abre **solo para la IP de salida del runner**, que se calcula en cada corrida. Opcionalmente, para la IP `/32` de un integrante (`TF_VAR_admin_cidr`). Una validación de Terraform impide abrirlo a `0.0.0.0/0`.
+- **Identidad de la instancia:** el pipeline se conecta con `StrictHostKeyChecking=yes`. La clave pública del host se obtiene del registro del sistema de la instancia mediante la API de AWS, un canal autenticado, y no de la primera conexión por la red. Así se evita conectarse (y entregar los `.env` y el token) a una máquina que se haga pasar por la instancia.
+- La instancia exige **IMDSv2** y tiene el disco **cifrado**.
+
+### 5.4 Autenticación de la EC2 contra el registry
+
+- La EC2 no puede acceder al registry del labsys, que solo existe dentro de la red de la facultad ([`ERRORES.md`](./ERRORES.md), error 39). Por eso `publish` sube a Docker Hub únicamente las imágenes que pasaron el stage `security`; las candidatas nunca salen del registry interno.
+- Se usan dos tokens de Docker Hub en lugar de la contraseña de la cuenta, ambos con vencimiento:
+
+| Token | Permiso | Lo usa |
+|---|---|---|
+| `DOCKERHUB_PUSH_TOKEN` | Read & Write | Solo `publish` |
+| `DOCKERHUB_PULL_TOKEN` | Read-only | Solo `deploy` (entorno `production`) |
+
+- La EC2 es la máquina más expuesta: con un token de solo lectura, si se filtra, no se pueden subir ni borrar imágenes.
+- El token llega a la EC2 por la entrada estándar (`--password-stdin`), y un `trap` ejecuta `docker logout` siempre, incluso si el despliegue falla. La credencial no queda en el historial, en el log ni guardada en la instancia.
+
+### 5.5 Integridad de lo que se instala
+
+- El plugin de Docker Compose se instala en una versión fija (`v5.5.1`) y se verifica su checksum SHA-256 antes de instalarlo con `sudo`.
+- El provider de AWS de Terraform queda fijado por [`infra/.terraform.lock.hcl`](./infra/.terraform.lock.hcl), que incluye sus hashes.
