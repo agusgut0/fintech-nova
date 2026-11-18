@@ -29,7 +29,10 @@ flowchart LR
   de `latest`. En la rama por defecto, además, sube las imágenes aprobadas a Docker Hub
   (`devopsgrupo6`): la EC2 no puede acceder al registry del labsys, que solo existe dentro de la
   red de la facultad. Las imágenes candidatas nunca salen del registry interno.
-- **deploy:** solo se ejecuta en la rama por defecto. Se conecta por SSH a EC2, instala Docker y
+- **deploy:** solo se ejecuta en la rama por defecto y es **manual**: el pipeline corre hasta
+  `publish` y deja el despliegue esperando, porque el sandbox de AWS está apagado la mayor parte
+  del tiempo. Se ejecuta con la instancia encendida y las variables de EC2 actualizadas. Mientras
+  no se ejecuta, el pipeline queda en verde; si se ejecuta y falla, `verify` también falla. Se conecta por SSH a EC2, instala Docker y
   el plugin de Compose si hace falta (en versión fija, `v5.5.1`, verificando su checksum SHA-256
   antes de instalarlo), copia el Compose y los archivos de entorno (quitando los saltos de línea
   CRLF de Windows), inicia sesión en Docker Hub

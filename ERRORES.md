@@ -203,3 +203,8 @@
 - **Error:** Al preparar el despliegue, el nombre del registry del labsys no se pudo resolver desde fuera de la facultad: `nslookup` contra un DNS público devolvió `Non-existent domain`. La EC2 está en AWS, así que no habría podido hacer `docker pull` de las imágenes, sin importar la credencial usada.
 - **Causa:** El registry solo existe dentro de la red de la facultad. Los runners del labsys lo alcanzan, pero una máquina externa no (coincide con el `Host desconocido` del error 33).
 - **Solución:** El build y el escaneo siguen contra el registry interno, y `publish` sube a Docker Hub solo las imágenes que pasaron el stage `security`. La EC2 las descarga de Docker Hub con un token de solo lectura y con vencimiento.
+
+### 40. `no space left on device` en el runner durante `publish-image`
+- **Error:** En el primer pipeline de `main` con el despliegue completo, los siete jobs de `publish-image` fallaron en unos 1:25 minutos con `Job failed (system failure)` y `no space left on device` al crear el volumen de caché. El job ni siquiera llegó a ejecutar el `script`, y `deploy` quedó salteado.
+- **Causa:** El disco del runner compartido del labsys (`without-dind`) estaba lleno. No fue un error del pipeline: los jobs anteriores, que entraron antes de que se llenara, pasaron en verde.
+- **Solución:** Reintentar los jobs cuando el runner tenga espacio. Si el error persiste, avisar a la cátedra, que administra ese runner.
