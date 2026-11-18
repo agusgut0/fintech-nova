@@ -208,3 +208,8 @@
 - **Error:** En el primer pipeline de `main` con el despliegue completo, los siete jobs de `publish-image` fallaron en unos 1:25 minutos con `Job failed (system failure)` y `no space left on device` al crear el volumen de caché. El job ni siquiera llegó a ejecutar el `script`, y `deploy` quedó salteado.
 - **Causa:** El disco del runner compartido del labsys (`without-dind`) estaba lleno. No fue un error del pipeline: los jobs anteriores, que entraron antes de que se llenara, pasaron en verde.
 - **Solución:** Reintentar los jobs cuando el runner tenga espacio. Si el error persiste, avisar a la cátedra, que administra ese runner.
+
+### 41. Terraform no encuentra las credenciales del sandbox en Windows
+- **Error:** Al probar la infraestructura desde una PC con Windows, `terraform plan` terminó con `No valid credential sources found` aunque las credenciales de AWS Details → AWS CLI ya estaban copiadas en `C:\Users\<usuario>\.aws\credentials`.
+- **Causa:** El Bloc de notas guardó el archivo como `credentials.txt`. El provider de AWS solo lee un archivo llamado exactamente `credentials`, sin extensión. Como el Explorador de Windows oculta las extensiones por defecto, el nombre parecía correcto.
+- **Solución:** Renombrar el archivo a `credentials` (por ejemplo, `Rename-Item "$env:USERPROFILE\.aws\credentials.txt" credentials`). En el pipeline no ocurre, porque las credenciales llegan como variables de CI/CD.

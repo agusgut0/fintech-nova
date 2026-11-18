@@ -119,3 +119,77 @@ Todo el aprovisionamiento previo de la instancia virgen está automatizado de pr
 
 ![Pruebas Smoke Tests HTTP 200](./img/deploy-terminal-curl.png)
 
+
+---
+
+# Parte 2 — Despliegue automatizado con Terraform y GitLab CI/CD
+
+En la Parte 2 la instancia ya no se crea a mano: la crea el pipeline con **Terraform** (carpeta [`infra/`](./infra/)) y la despliega por SSH. El sandbox de AWS Academy entrega en cada relanzamiento una instancia, IP, Security Group, llaves y credenciales nuevas; con Terraform, todo eso se vuelve a crear de forma idéntica en cada sesión.
+
+## 5. Qué cambia respecto de la Parte 1
+
+| Paso | Parte 1 (manual) | Parte 2 (pipeline) |
+|---|---|---|
+| Crear la EC2 y el Security Group | Consola de AWS | `infra-apply` (Terraform) |
+| Llave SSH | Descargar `labsuser.pem` en cada sesión | Llave propia del deploy, fija en GitLab; Terraform sube la pública |
+| Puerto 22 | Abierto a la IP del administrador | Abierto **solo a la IP del runner**, calculada en cada corrida |
+| Identidad de la instancia | Se aceptaba en la primera conexión | Se lee del registro del sistema por la API de AWS antes de conectar |
+| Imágenes | Docker Hub, públicas | Docker Hub, con token de solo lectura |
+| Despliegue y verificación | `deploy.sh` desde una PC | Jobs `deploy` y `verify-deployment` |
+
+## 6. Recursos que crea Terraform
+
+| Recurso | Configuración |
+|---|---|
+| Security Group `fintech-nova-grupo6-sg` | Entrada: `22` solo desde la IP del runner (y, opcionalmente, la de un integrante con `TF_VAR_admin_cidr`); `8443` desde `0.0.0.0/0`. Sin reglas para `80` ni `3306`, que quedan cerrados. Salida libre. |
+| Key pair `fintech-nova-grupo6-deploy` | Llave pública [`infra/deploy-key.pub`](./infra/deploy-key.pub). |
+| Instancia `fintech-nova-grupo6` | `t3.medium`, Amazon Linux 2023 (`x86_64`), disco `gp3` de 8 GiB **cifrado**, **IMDSv2 obligatorio**, IP pública, VPC y subred por defecto. |
+
+Todos los recursos llevan las etiquetas `Proyecto = fintech-nova-grupo6` y `Gestion = terraform`. Las variables tienen bloques `validation` que frenan valores inválidos antes de llamar a AWS (por ejemplo, un tipo de instancia distinto de `t3.medium` o `t3.large`, o abrir el SSH a `0.0.0.0/0`).
+
+El **estado** de Terraform se guarda en GitLab (Operate → Terraform states) y no en AWS, porque el sandbox borra sus recursos al relanzarse. Si `infra-apply` se ejecuta dos veces en la misma sesión, no crea una instancia nueva: solo vuelve a desplegar.
+
+## 7. Procedimiento al iniciar cada sesión del sandbox
+
+1. En AWS Academy, iniciar el lab y esperar a que el indicador quede en verde.
+2. Abrir **AWS Details → AWS CLI → Show** y copiar los tres valores.
+3. En GitLab (Settings → CI/CD → Variables), actualizar `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`.
+4. En el último pipeline de `main` (Build → Pipelines), ejecutar ▶ en `infra-apply`.
+5. `deploy` y `verify-deployment` corren solos. La URL de la aplicación queda en Operate → Environments → `production`.
+6. Opcional: al terminar, ejecutar ▶ en `infra-destroy` para borrar la infraestructura antes de que venza la sesión.
+
+Las credenciales de AWS no se pueden automatizar: AWS Academy no permite crear usuarios IAM ni proveedores de identidad (OIDC), y las credenciales del lab vencen al cerrarse la sesión.
+
+## 8. Configuración inicial (una sola vez)
+
+1. Generar el par de llaves del deploy fuera del repositorio y versionar solo la pública:
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C "gitlab-ci-deploy-fintech-nova" -f ~/.ssh/fintech-nova-deploy
+   cp ~/.ssh/fintech-nova-deploy.pub infra/deploy-key.pub
+   ```
+2. Cargar la llave **privada** en la variable `EC2_SSH_PRIVATE_KEY` (tipo File, protegida, entorno `production`).
+3. Crear las tres variables `AWS_*` (enmascaradas, protegidas, entorno `production`) y, si hace falta, `TF_VAR_admin_cidr`.
+
+La tabla completa de variables está en [`PIPELINE.md`](./PIPELINE.md#configuración-necesaria-en-gitlab).
+
+## 9. Evidencia de la primera sesión (configuración manual)
+
+Antes de automatizar la infraestructura, la primera instancia de la Parte 2 se creó a mano para validar el procedimiento que después se trasladó a Terraform.
+
+Instancia recién creada, sin Docker (el pipeline la prepara desde cero):
+
+![Instancia sin Docker](./img-parte2/a.png)
+
+Resumen de la instancia:
+
+![Resumen de la instancia EC2](./img-parte2/resumen-instancia-EC2.png)
+
+Reglas de entrada del Security Group (22 restringido, 8443 público, sin 80 ni 3306):
+
+![Reglas de entrada del Security Group](./img-parte2/reglas-entrada-sg.png)
+
+Verificación de la identidad de la instancia: la clave `ssh-ed25519` del registro del sistema coincide con la que presenta la instancia por la red. Es el mismo control que `infra-apply` ahora realiza automáticamente por la API de AWS.
+
+![Clave del host en el registro del sistema](./img-parte2/evidencia-know_hosts.png)
+
+![Clave del host por la red (ssh-keyscan)](./img-parte2/ssh-keyscan.png)

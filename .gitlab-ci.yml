@@ -3,6 +3,7 @@ stages:
   - build
   - security
   - publish
+  - infra
   - deploy
   - verify
 
@@ -19,6 +20,9 @@ variables:
   # Cuenta de Docker Hub donde se publican las imagenes aprobadas. No es un secreto (es publica):
   # los tokens van como variables de CI/CD enmascaradas y protegidas (DOCKERHUB_*_TOKEN).
   DOCKERHUB_NAMESPACE: devopsgrupo6
+  # Terraform: carpeta de la infraestructura y nombre del estado guardado en GitLab
+  TF_ROOT: infra
+  TF_STATE_NAME: production
   # Riesgos aceptados de Trivy. Formato: "imagen:CVE", separados por coma. Cada entrada aplica
   # SOLO a esa imagen. Cada una debe estar justificada en SEGURIDAD.md (secciones 4.3 y 4.4).
   #  - db:CVE-2025-68121           gosu (binario Go de la imagen oficial de MariaDB) no usa TLS. Revisar: 2026-12-15.
@@ -57,6 +61,24 @@ dockerfile-lint:
     paths:
       - hadolint-report.json
       - dockerfiles.txt
+
+# Base comun de los jobs de Terraform (los jobs la reutilizan con "extends")
+.terraform-base:
+  tags: [$RUNNER_TAG]
+  image:
+    name: hashicorp/terraform:1.17.2
+    entrypoint: [""]
+
+terraform-validate:
+  # Revisa formato y sintaxis de la infraestructura en todas las ramas, sin credenciales
+  # de AWS y sin tocar el estado (-backend=false). Falla rapido, antes del build.
+  stage: validate
+  extends: .terraform-base
+  script:
+    - cd "$TF_ROOT"
+    - terraform fmt -check -recursive -diff
+    - terraform init -backend=false -input=false
+    - terraform validate
 
 secret-scan:
   # Busca contrasenas, claves y tokens en todo el repositorio, incluido el historial.
@@ -253,17 +275,125 @@ publish-image:
       docker push "$DOCKERHUB_NAMESPACE/$SERVICE:$IMAGE_TAG"
       docker logout
 
+# Configuracion comun de infra-apply e infra-destroy
+.terraform-aws:
+  extends: .terraform-base
+  # Un solo job a la vez sobre la infraestructura y el despliegue de produccion
+  resource_group: production
+  variables:
+    AWS_DEFAULT_REGION: us-east-1
+    # Backend "http" de GitLab: el estado vive en Operate > Terraform states.
+    # Se autentica con el token del job, que vence al terminar el job (sin credenciales extra).
+    TF_HTTP_ADDRESS: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/terraform/state/$TF_STATE_NAME"
+    TF_HTTP_LOCK_ADDRESS: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/terraform/state/$TF_STATE_NAME/lock"
+    TF_HTTP_UNLOCK_ADDRESS: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/terraform/state/$TF_STATE_NAME/lock"
+    TF_HTTP_LOCK_METHOD: POST
+    TF_HTTP_UNLOCK_METHOD: DELETE
+    TF_HTTP_USERNAME: gitlab-ci-token
+    TF_HTTP_PASSWORD: "$CI_JOB_TOKEN"
+    TF_HTTP_RETRY_WAIT_MIN: "5"
+  # No usa los reportes de los jobs anteriores
+  dependencies: []
+  before_script:
+    # Credenciales del sandbox: cambian en cada sesion (AWS Details > AWS CLI)
+    - |
+      : "${AWS_ACCESS_KEY_ID:?Define AWS_ACCESS_KEY_ID (se actualiza en cada sesion del sandbox)}"
+      : "${AWS_SECRET_ACCESS_KEY:?Define AWS_SECRET_ACCESS_KEY (se actualiza en cada sesion del sandbox)}"
+      : "${AWS_SESSION_TOKEN:?Define AWS_SESSION_TOKEN (se actualiza en cada sesion del sandbox)}"
+    - cd "$TF_ROOT"
+    - terraform init -input=false
+
+infra-apply:
+  # Crea (o actualiza) en el sandbox el Security Group, la llave SSH y la EC2.
+  # Es el boton de despliegue: MANUAL, porque el sandbox esta apagado casi siempre.
+  # Mientras nadie lo ejecute, el pipeline queda en verde (allow_failure: true).
+  # Si la infraestructura ya existe en esta sesion, Terraform no crea nada nuevo.
+  stage: infra
+  extends: .terraform-aws
+  environment:
+    name: production
+    action: prepare
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+  script:
+    - |
+      set -eu
+      apk add --no-cache aws-cli curl >/dev/null
+
+      # El puerto 22 se abre SOLO para la IP con la que sale este runner a internet
+      RUNNER_IP="$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]')"
+      echo "IP de salida del runner: $RUNNER_IP"
+      export TF_VAR_runner_cidr="$RUNNER_IP/32"
+
+      terraform apply -input=false -auto-approve
+
+      EC2_IP="$(terraform output -raw public_ip)"
+      INSTANCE_ID="$(terraform output -raw instance_id)"
+      echo "Instancia $INSTANCE_ID con IP $EC2_IP"
+
+      # Identidad de la EC2: la clave publica del host se lee del registro del sistema
+      # de la instancia por la API de AWS (canal autenticado), no de la red. Asi deploy
+      # se conecta con StrictHostKeyChecking=yes sin confiar a ciegas en la primera conexion.
+      # El registro tarda unos minutos en tener las claves despues del arranque.
+      HOST_KEY=""
+      for intento in $(seq 1 30); do
+        HOST_KEY="$(aws ec2 get-console-output --instance-id "$INSTANCE_ID" --latest \
+            --query Output --output text 2>/dev/null | tr -d '\r' \
+          | sed -n '/-----BEGIN SSH HOST KEY KEYS-----/,/-----END SSH HOST KEY KEYS-----/p' \
+          | awk '$1 == "ssh-ed25519" { print $1 " " $2; exit }')" || true
+        [ -n "$HOST_KEY" ] && break
+        echo "Esperando la clave del host ($intento/30)..."
+        sleep 10
+      done
+      if [ -z "$HOST_KEY" ]; then
+        echo "ERROR: no se encontro la clave ssh-ed25519 en el registro del sistema"; exit 1
+      fi
+      echo "Clave del host: $HOST_KEY"
+
+      # Datos para deploy y verify-deployment: la IP como variable (dotenv) y el known_hosts
+      # como archivo. Se llama INFRA_EC2_HOST y no EC2_HOST porque una variable de proyecto
+      # con el mismo nombre tendria prioridad sobre la del dotenv.
+      echo "$EC2_IP $HOST_KEY" > "$CI_PROJECT_DIR/known_hosts"
+      echo "INFRA_EC2_HOST=$EC2_IP" > "$CI_PROJECT_DIR/infra.env"
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - known_hosts
+    reports:
+      dotenv: infra.env
+
+infra-destroy:
+  # Borra todo lo que creo Terraform. Opcional: el sandbox tambien lo borra al cerrarse.
+  stage: infra
+  extends: .terraform-aws
+  environment:
+    name: production
+    action: stop
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+  script:
+    # runner_cidr es obligatoria, pero para destruir no importa su valor
+    - terraform destroy -input=false -auto-approve -var "runner_cidr=127.0.0.1/32"
+
 deploy:
   stage: deploy
   image: alpine:3.21
+  # Recibe de infra-apply la IP (INFRA_EC2_HOST) y el archivo known_hosts
+  needs:
+    - job: infra-apply
+      artifacts: true
   before_script:
     - apk add --no-cache openssh-client
   script:
     - |
       set -eu
-      : "${EC2_HOST:?Define EC2_HOST en las variables CI/CD}"
+      : "${INFRA_EC2_HOST:?No llego INFRA_EC2_HOST desde infra-apply}"
+      test -s known_hosts || { echo "No llego known_hosts desde infra-apply"; exit 1; }
       : "${EC2_SSH_PRIVATE_KEY:?Define EC2_SSH_PRIVATE_KEY como variable de tipo archivo}"
-      : "${EC2_KNOWN_HOSTS:?Define EC2_KNOWN_HOSTS como variable de tipo archivo}"
       # Credenciales de Docker Hub de SOLO LECTURA (la EC2 solo baja imagenes, nunca sube)
       : "${DOCKERHUB_USER:?Define DOCKERHUB_USER en las variables CI/CD}"
       : "${DOCKERHUB_PULL_TOKEN:?Define DOCKERHUB_PULL_TOKEN (token de solo lectura)}"
@@ -275,8 +405,8 @@ deploy:
       : "${API_TARJETAS_ENV_FILE:?Define API_TARJETAS_ENV_FILE como variable de tipo archivo}"
 
       chmod 600 "$EC2_SSH_PRIVATE_KEY"
-      SSH_OPTS="-i $EC2_SSH_PRIVATE_KEY -o UserKnownHostsFile=$EC2_KNOWN_HOSTS -o StrictHostKeyChecking=yes"
-      REMOTE="ec2-user@$EC2_HOST"
+      SSH_OPTS="-i $EC2_SSH_PRIVATE_KEY -o UserKnownHostsFile=$CI_PROJECT_DIR/known_hosts -o StrictHostKeyChecking=yes"
+      REMOTE="ec2-user@$INFRA_EC2_HOST"
       REMOTE_DIR="/home/ec2-user/$APP_DIR"
 
       ssh $SSH_OPTS "$REMOTE" '
@@ -330,7 +460,7 @@ deploy:
         cd '$REMOTE_DIR'
         if [ ! -f certs/cert.pem ] || [ ! -f certs/key.pem ]; then
           sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout certs/key.pem -out certs/cert.pem -subj '/CN=$EC2_HOST'
+            -keyout certs/key.pem -out certs/cert.pem -subj '/CN=$INFRA_EC2_HOST'
           sudo chmod 644 certs/key.pem certs/cert.pem
           sudo chown ec2-user:ec2-user certs/cert.pem certs/key.pem
         fi
@@ -344,19 +474,12 @@ deploy:
   environment:
     name: production
     # Link a la app en Operate > Environments (boton "Open")
-    url: https://$EC2_HOST:8443
+    url: https://$INFRA_EC2_HOST:8443
   resource_group: production
   tags: [$RUNNER_TAG]
-  # No usa los reportes de los jobs anteriores: evita descargarlos
-  dependencies: []
   rules:
-    # Deploy MANUAL: el sandbox de AWS esta apagado casi siempre. El pipeline de main corre
-    # hasta publish y deja este job esperando el boton "play", que se aprieta con la EC2
-    # encendida y las variables EC2_* actualizadas. allow_failure: true hace que, mientras
-    # nadie lo ejecute, el pipeline quede en verde en lugar de "blocked".
+    # Corre solo despues de infra-apply (que es el job manual que se aprieta)
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      when: manual
-      allow_failure: true
 
 verify-deployment:
   stage: verify
@@ -365,19 +488,23 @@ verify-deployment:
   script:
     - |
       set -eu
-      : "${EC2_HOST:?Define EC2_HOST en las variables CI/CD}"
+      : "${INFRA_EC2_HOST:?No llego INFRA_EC2_HOST desde infra-apply}"
       for endpoint in / /api/clientes /api/pagos /api/facturas /api/transacciones /api/tarjetas; do
         status="$(curl --insecure --silent --show-error --output /dev/null --write-out '%{http_code}' \
-          --retry 10 --retry-delay 5 --retry-connrefused "https://$EC2_HOST:8443$endpoint")"
+          --retry 10 --retry-delay 5 --retry-connrefused "https://$INFRA_EC2_HOST:8443$endpoint")"
         echo "$endpoint -> HTTP $status"
         test "$status" = "200"
       done
       # El 80 debe estar cerrado: si responde algo (cualquier codigo HTTP), el job falla
-      if curl --silent --max-time 5 --output /dev/null "http://$EC2_HOST:80/"; then
+      if curl --silent --max-time 5 --output /dev/null "http://$INFRA_EC2_HOST:80/"; then
         echo "ERROR: el puerto 80 responde y deberia estar cerrado"; exit 1
       fi
       echo "Puerto 80 cerrado -> OK"
+  # La IP llega desde infra-apply; de deploy solo se espera que termine bien
   needs:
-    - deploy
+    - job: infra-apply
+      artifacts: true
+    - job: deploy
+      artifacts: false
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
