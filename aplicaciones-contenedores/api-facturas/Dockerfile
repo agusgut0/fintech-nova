@@ -20,7 +20,8 @@ COPY --from=builder /app/target/*.jar app.jar
 
 RUN adduser -D -H -u 1000 appuser
 
-ENV JAVA_TOOL_OPTIONS=-XX:TieredStopAtLevel=1 -Dspring.main.lazy-initialization=true -Dspring.jmx.enabled=false
+# Entre comillas: sin ellas, ENV separa por espacios y solo la primera opcion llegaba a la JVM
+ENV JAVA_TOOL_OPTIONS="-XX:TieredStopAtLevel=1 -Dspring.main.lazy-initialization=true -Dspring.jmx.enabled=false"
 
 EXPOSE 8080
 
