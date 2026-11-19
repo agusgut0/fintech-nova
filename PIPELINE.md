@@ -27,6 +27,9 @@ flowchart LR
   candidata asociada al commit.
 - **security:** Semgrep analiza el código fuente y Trivy escanea las imágenes candidatas en
   paralelo. Los reportes JSON de ambos controles quedan disponibles como artifacts por una semana.
+  La imagen la descarga el Docker del runner, que confía en el certificado del registry del labsys,
+  y Trivy la analiza desde ahí (`--image-src docker`). Al terminar, el job cierra la sesión del
+  registry y borra la imagen para no ocupar el disco del runner.
 - **publish:** si los controles anteriores pasan, etiqueta y publica las imágenes con el SHA
   completo del commit. Así, cada despliegue queda vinculado a una revisión concreta y no depende
   de `latest`. En la rama por defecto, además, sube las imágenes aprobadas a Docker Hub

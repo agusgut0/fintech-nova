@@ -200,8 +200,7 @@ image-scan:
           - api-tarjetas
           - web
   variables:
-    TRIVY_USERNAME: "$CI_REGISTRY_USER"
-    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
+    # Trivy ya no se conecta al registry (ver --image-src docker abajo): no necesita credenciales
     TRIVY_CACHE_DIR: ".trivycache"
     TRIVY_NO_PROGRESS: "true"
     TRIVY_TIMEOUT: "10m"
@@ -228,9 +227,21 @@ image-scan:
       (echo "$ACCEPTED_CVES" | tr ',' '\n' | tr -d ' ' | grep "^$SERVICE:" | cut -d: -f2 > .trivyignore) || true
       echo "Excepciones aplicadas a $SERVICE:"
       cat .trivyignore
-    # UNICO escaneo de la imagen (una sola consulta al registry). Genera el reporte en JSON con todas
-    # las severidades que tienen parche. Nunca corta (exit-code 0 por defecto).
-    - trivy image --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignore-unfixed --format json --output "trivy-$SERVICE.json" "$IMAGE"
+    # Cliente de Docker: la imagen de Trivy no lo trae. Se usa el Docker del runner (socket montado,
+    # el mismo que usa build-image), que SI confia en el certificado del registry del labsys.
+    - apk add --no-cache docker-cli
+    # La descarga la hace el Docker del runner y Trivy lee la imagen desde ahi (--image-src docker).
+    # Antes Trivy la bajaba por su cuenta y fallaba con "x509: certificate signed by unknown
+    # authority"; solo pasaba cuando la imagen ya estaba en el Docker local (ERRORES.md, error 42).
+    # El trap cierra la sesion y borra la imagen SIEMPRE, aunque el escaneo falle: no queda la
+    # credencial guardada ni la imagen ocupando el disco del runner (ERRORES.md, error 40).
+    # UNICO escaneo de la imagen. Genera el reporte en JSON con todas las severidades que tienen
+    # parche. Nunca corta (exit-code 0 por defecto).
+    - |
+      trap 'docker rmi "$IMAGE" >/dev/null 2>&1 || true; docker logout "$CI_REGISTRY" >/dev/null 2>&1 || true' EXIT
+      echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+      docker pull "$IMAGE"
+      trivy image --image-src docker --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignore-unfixed --format json --output "trivy-$SERVICE.json" "$IMAGE"
     # Todo lo que sigue trabaja sobre el JSON local: no vuelve a tocar el registry ni la base de datos.
     - trivy convert --format table --output "trivy-$SERVICE.txt" "trivy-$SERVICE.json"
     - cat "trivy-$SERVICE.txt"
