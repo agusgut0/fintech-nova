@@ -98,6 +98,12 @@ Al iniciar cada sesión del sandbox solo hay que actualizar las tres variables `
 
 ## Estado
 
-El pipeline de la rama por defecto se ejecutó completo hasta `publish`: las siete imágenes se
-publicaron en Docker Hub. La etapa `infra` y el despliegue con Terraform requieren una sesión
-activa del sandbox para su primera ejecución.
+El pipeline de la rama por defecto se ejecutó completo, de `validate` a `verify` (pipeline
+#17361), con una sesión activa del sandbox:
+
+- `infra-apply` creó los 6 recursos con Terraform y obtuvo la clave del host por la API de AWS.
+- `deploy` se conectó por SSH verificando esa clave, levantó los 7 contenedores con las imágenes
+  de Docker Hub etiquetadas con el SHA del commit y cerró la sesión de Docker Hub.
+- `verify-deployment` obtuvo HTTP 200 en la web y en las 5 APIs, y confirmó que el puerto 80 está
+  cerrado.
+- `infra-destroy` borró los 6 recursos al terminar.
