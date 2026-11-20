@@ -19,8 +19,11 @@ flowchart LR
     D --> T["verify<br/>HTTPS: web y 5 APIs"]
 ```
 
-- **validate:** Yamllint revisa el pipeline y Compose; Hadolint revisa los Dockerfiles;
-  `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
+- **validate:** Yamllint revisa la sintaxis del pipeline y de Compose. `compose-validate` valida
+  Compose contra su esquema y comprueba las reglas del stack sobre el archivo resuelto: solo `web`
+  publica un puerto, y es el `8443`; todos los servicios tienen `restart: always` y límites de CPU
+  y memoria. Hadolint revisa los Dockerfiles; ShellCheck (`shell-lint`) revisa los scripts de
+  shell; `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
   credenciales de AWS.
 - **build:** construye las siete imágenes (`db`, `api-clientes`, `api-pagos`, `api-facturas`,
   `api-transacciones`, `api-tarjetas` y `web`) en paralelo. Las sube al registry con una etiqueta
@@ -54,14 +57,16 @@ flowchart LR
   Si `deploy` falla, `verify` no corre y el pipeline queda en rojo.
 - **runners:** todos los jobs usan el mismo tag de runner (`runner-without-dind`).
 
-El escaneo de Trivy corta el flujo ante vulnerabilidades **HIGH** o **CRITICAL**. Semgrep también
-falla ante los hallazgos que reporta con la configuración automática seleccionada. Un fallo en
-validación o seguridad impide que se publiquen las etiquetas finales y que avance el despliegue.
+El escaneo de imágenes de Trivy corta el flujo ante vulnerabilidades **CRITICAL con parche
+disponible**. Semgrep corta ante hallazgos de severidad `ERROR` y Gitleaks ante cualquier secreto.
+`dependency-scan` solo informa: deja el job en advertencia y no corta. Un fallo en validación o
+seguridad impide que se publiquen las etiquetas finales y que avance el despliegue. La política
+completa y su justificación están en [`SEGURIDAD.md`](./SEGURIDAD.md#42-política-ante-vulnerabilidades).
 
 ## Configuración necesaria en GitLab
 
-El despliegue requiere un runner con soporte para Docker-in-Docker y conectividad SSH hacia la
-instancia EC2. Configurar las siguientes variables de CI/CD como **protegidas** y, para valores
+El pipeline requiere el runner del proyecto (tag `runner-without-dind`) con salida a internet, para
+llegar a Docker Hub, a la API de AWS y al puerto 22 de la instancia EC2. Configurar las siguientes variables de CI/CD como **protegidas** y, para valores
 secretos compatibles, **enmascaradas**. Los secretos y archivos `.env` no se guardan en el
 repositorio:
 
