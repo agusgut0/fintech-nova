@@ -1,23 +1,25 @@
 # Punto 1 — Pipeline de GitLab CI/CD
 
 El pipeline automatiza la validación, construcción, análisis, publicación y despliegue del stack
-de FinTech Nova. Está definido en [`.gitlab-ci.yml`](./.gitlab-ci.yml) y utiliza el
-[`docker-compose.yml`](./aplicaciones-contenedores/docker-compose.yml) actualizado para obtener
-las imágenes del Container Registry del proyecto.
+de FinTech Nova. Está definido en [`.gitlab-ci.yml`](./.gitlab-ci.yml). Las imágenes se
+construyen y escanean en el registry del labsys, y la EC2 las descarga de Docker Hub con el
+[`docker-compose.yml`](./aplicaciones-contenedores/docker-compose.yml), que recibe el registry y
+la etiqueta por variables (`REGISTRY_IMAGE` e `IMAGE_TAG`).
 
 ## Flujo
 
 ```mermaid
 flowchart LR
-    V["validate<br/>YAML, Dockerfiles y Terraform"] --> B["build<br/>7 imágenes en paralelo"]
-    B --> S["security<br/>Trivy por imagen"]
-    B --> G["security<br/>Semgrep SAST"]
+    V["validate<br/>YAML, compose, Dockerfiles,<br/>scripts, código y Terraform"] --> B["build<br/>7 imágenes en paralelo"]
+    C["security (desde el inicio)<br/>Gitleaks, Semgrep, dependencias"] --> P
+    B --> S["security<br/>Trivy, 7 imágenes en paralelo"]
     S --> P["publish<br/>tags por commit + Docker Hub"]
-    G --> P
     P --> I["infra (manual)<br/>Terraform crea la EC2"]
     I --> D["deploy<br/>SSH → EC2"]
-    D --> T["verify<br/>HTTPS: web y 5 APIs"]
+    D --> T["verify<br/>HTTPS: web y 5 APIs,<br/>puerto 80 cerrado"]
 ```
+
+El diagrama detallado, con cada job, está en el [README §3](./README.md#-3-pipeline-de-cicd).
 
 - **validate:** Yamllint revisa la sintaxis del pipeline y de Compose. `compose-validate` valida
   Compose contra su esquema y comprueba las reglas del stack sobre el archivo resuelto: solo `web`
@@ -112,12 +114,21 @@ Al iniciar cada sesión del sandbox solo hay que actualizar las tres variables `
 
 ## Estado
 
-El pipeline de la rama por defecto se ejecutó completo, de `validate` a `verify` (pipeline
-#17361), con una sesión activa del sandbox:
+Última corrida completa: pipeline **#17424** de `main` (commit `072d47d6`), 19 y 20/11/2026,
+con 38 jobs y unos 23 minutos de duración. Terminó en estado *Warning*, que corresponde solo a
+`code-lint` (hallazgos de estilo que no cortan):
 
+- `validate`, `build`, `security` y `publish` en verde. Las 7 imágenes se construyeron,
+  escanearon y publicaron en paralelo, sin servicio Docker-in-Docker.
 - `infra-apply` creó los 6 recursos con Terraform y obtuvo la clave del host por la API de AWS.
-- `deploy` se conectó por SSH verificando esa clave, levantó los 7 contenedores con las imágenes
-  de Docker Hub etiquetadas con el SHA del commit y cerró la sesión de Docker Hub.
+- `deploy` se conectó por SSH verificando esa clave, levantó los 7 contenedores con el compose
+  endurecido (sin capacidades del kernel y con sistema de archivos de solo lectura) sobre las
+  imágenes de Docker Hub etiquetadas con el SHA del commit, y cerró la sesión de Docker Hub.
 - `verify-deployment` obtuvo HTTP 200 en la web y en las 5 APIs, y confirmó que el puerto 80 está
   cerrado.
-- `infra-destroy` borró los 6 recursos al terminar.
+
+Datos de la instancia en [`AWS_EC2.md` §10](./AWS_EC2.md#10-última-sesión-con-el-pipeline-completo)
+y capturas en el [README §8](./README.md#-8-evidencia).
+
+La primera corrida completa fue el pipeline #17361 (18/11/2026), antes de sumar el hardening y los
+linters.

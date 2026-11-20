@@ -233,3 +233,13 @@
 - **Error:** Con `read_only: true` y un `tmpfs` en `/var/cache/nginx`, `web` quedó reiniciándose con `Permission denied` al crear sus directorios temporales.
 - **Causa:** Docker crea los puntos de montaje `tmpfs` con dueño `root` y permisos `755` (salvo `/tmp`, que queda con `1777`). El `chown` a `nginx` que hace el Dockerfile sobre `/var/cache/nginx` queda tapado por el montaje, y NGINX corre como `nginx` (uid 101). Además, `/var/run` es un enlace a `/run`.
 - **Solución:** Montar los `tmpfs` con el dueño correcto: `/var/cache/nginx:uid=101,gid=101` y `/run:uid=101,gid=101` (donde va `nginx.pid`). Se verificó con el smoke test, los headers de seguridad y el límite de peticiones.
+
+### 46. `infra-destroy` borró la EC2 justo después de un despliegue exitoso
+- **Error:** En el pipeline #17424 de `main`, `infra-apply`, `deploy` y `verify-deployment` terminaron bien y, a continuación, `infra-destroy` destruyó los 6 recursos (`Destroy complete! Resources: 6 destroyed.`), aunque es un job manual y nadie había querido borrar la infraestructura.
+- **Causa:** Para lanzar el despliegue se usó el botón de la **etapa** `infra` ("Run all manual"), no el del job `infra-apply`. Ese botón ejecuta todos los jobs manuales de la etapa, incluido `infra-destroy`. Como los dos comparten `resource_group: production`, corrieron uno después del otro, y el destroy se ejecutó después de `deploy` y `verify`.
+- **Solución:** Volver a ejecutar solo `infra-apply`, con el botón del job, que recreó la infraestructura y desplegó de nuevo. El procedimiento en `AWS_EC2.md` indica ejecutar ese job puntual. No hubo pérdida de datos relevante, porque la base del sandbox es de prueba y el sandbox la borra igual al cerrar la sesión.
+
+### 47. El Container Registry del proyecto no tiene vista web (404)
+- **Error:** Para la evidencia se buscó el registry en el menú del proyecto (Deploy → Container registry) y la opción no existe. La URL directa `.../tp-grupo6/container_registry` devuelve `404: Page not found`, y el link del README a esa página quedaba roto.
+- **Causa:** El registry del labsys lo provee la cátedra fuera de la interfaz del proyecto. El pipeline lo recibe en `CI_REGISTRY`, que está enmascarada (en los logs aparece `[MASKED]`), y el push funciona, pero GitLab no muestra las imágenes en la interfaz del proyecto.
+- **Solución:** Tomar la evidencia del log de `publish-image`: la misma imagen aparece con el mismo digest (`sha256:40a3788d…`) en el registry del labsys y en Docker Hub. Se reemplazó el link roto del README. No se publicó el host del registry, porque la cátedra lo mantiene enmascarado.
