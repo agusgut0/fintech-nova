@@ -179,7 +179,7 @@ flowchart LR
 ### C. Decisiones clave
 
 - **Versionado:** cada imagen lleva el **SHA del commit**. Lo desplegado siempre se puede rastrear hasta una revisión concreta y no se depende de `latest`.
-- **Runner:** todos los jobs usan el runner del proyecto, seleccionado por su tag (`runner-without-dind`). Es el runner asignado al grupo y tiene salida a internet, que el pipeline necesita para llegar a Docker Hub y a AWS.
+- **Runner:** todos los jobs usan el runner del proyecto, seleccionado por su tag (`runner-without-dind`). Ese runner comparte su propio Docker con los jobs, así que `build`, `image-scan` y `publish` construyen, escanean y suben las imágenes sin levantar un Docker aparte dentro de cada job (Docker-in-Docker). Son menos contenedores por pipeline y menos uso del disco del runner. Además tiene salida a internet, que el pipeline necesita para llegar a Docker Hub y a AWS.
 - **Secretos:** ningún secreto está en el repositorio ni en el `.gitlab-ci.yml`. Los `.env`, la llave SSH y los tokens son variables de CI/CD protegidas (y enmascaradas cuando GitLab lo permite). Las credenciales del despliegue solo existen en el entorno `production`. Detalle en [SEGURIDAD.md §5](./SEGURIDAD.md#5-gestión-de-secretos-en-gitlab-y-autenticación-del-despliegue).
 - **Entorno y concurrencia:** `deploy` usa `environment: production`, que deja en GitLab el enlace a la aplicación, y `resource_group`, que evita que dos despliegues pisen la misma EC2.
 - **Artifacts:** los reportes de todos los controles quedan descargables desde el pipeline, aun cuando el job falla.

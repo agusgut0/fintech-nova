@@ -55,7 +55,9 @@ flowchart LR
   cualquiera no devuelve HTTP 200, o si el puerto `80` responde (debe estar cerrado). El entorno
   `production` muestra en GitLab (Operate → Environments) el enlace a la aplicación desplegada.
   Si `deploy` falla, `verify` no corre y el pipeline queda en rojo.
-- **runners:** todos los jobs usan el mismo tag de runner (`runner-without-dind`).
+- **runners:** todos los jobs usan el mismo tag de runner (`runner-without-dind`). Ese runner
+  comparte su Docker con los jobs por el socket, así que build, escaneo y publicación no levantan
+  un servicio Docker-in-Docker: menos contenedores por pipeline y menos uso del disco del runner.
 
 El escaneo de imágenes de Trivy corta el flujo ante vulnerabilidades **CRITICAL con parche
 disponible**. Semgrep corta ante hallazgos de severidad `ERROR` y Gitleaks ante cualquier secreto.

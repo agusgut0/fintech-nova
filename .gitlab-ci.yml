@@ -211,12 +211,11 @@ dependency-scan:
       - trivy-fs-report.txt
 
 build-image:
+  # Sin servicio docker:dind: el runner (tag runner-without-dind) comparte su Docker con el job
+  # por el socket, y DOCKER_HOST vacio hace que el cliente use ese socket.
   stage: build
   tags: [$RUNNER_TAG]
   image: docker:27.5.1-cli
-  services:
-    - name: docker:dind
-      command: ["--tls=false"]
   parallel:
     matrix:
       - SERVICE:
@@ -315,10 +314,7 @@ image-scan:
 publish-image:
   stage: publish
   tags: [$RUNNER_TAG]
-  image: docker:27.5.1-cli
-  services:
-    - name: docker:dind
-      alias: docker
+  image: docker:27.5.1-cli    # usa el Docker del runner, igual que build-image
   parallel:
     matrix:
       - SERVICE:
