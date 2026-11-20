@@ -4,6 +4,8 @@ Material de apoyo para la presentación de la Parte 2. **Duración máxima: 10 m
 
 Se presenta en este orden: el repositorio (este archivo y el [README](./README.md)), el pipeline en GitLab y la aplicación funcionando en AWS. Si el sandbox no está disponible, se usan las capturas del [README §8](./README.md#-8-evidencia).
 
+Las slides están en [presentacion/demo.html](./presentacion/demo.html): se abren con doble clic en el navegador, sin internet. Se avanza con las flechas o con clic; **N** muestra las notas del orador y **T** inicia el cronómetro.
+
 ---
 
 ## Guion
@@ -34,8 +36,8 @@ Se presenta en este orden: el repositorio (este archivo y el [README](./README.m
 ### 3. Seguridad en el pipeline (2 min)
 
 - Presentar cada herramienta con su rol en una frase: secretos en el historial, análisis del código, buenas prácticas de los Dockerfiles, vulnerabilidades de las imágenes y de las dependencias, y validación de la configuración.
-- **Qué encontramos:** 13 vulnerabilidades críticas que ya estaban en las imágenes de la Parte 1 sin que lo supiéramos, en el servidor web embebido de la API de facturas, en librerías del sistema de la imagen del frontend, en la API de transacciones y en la de clientes. Todas corregidas.
-- **Política:** se corta lo que tiene solución hoy (un secreto expuesto o una vulnerabilidad crítica con parche). Lo que no tiene parche se analiza, se registra con su justificación y tiene fecha de revisión. Hoy hay dos riesgos aceptados y ninguno es explotable en nuestro uso.
+- **Qué encontramos:** ninguna contraseña expuesta en los 45 commits de todas las ramas. En la primera corrida, 5 de las 7 imágenes tenían vulnerabilidades críticas: 15 en total, que estaban en producción desde la Parte 1 sin que lo supiéramos. El pipeline se detuvo antes de publicarlas. Corregimos 13 y aceptamos 2 como riesgo.
+- **Política:** se corta lo que tiene solución hoy (un secreto expuesto o una vulnerabilidad crítica con parche). Lo que no tiene parche se analiza, se registra con su justificación y tiene fecha de revisión. Los dos riesgos aceptados (base de datos y API de facturas) quedaron documentados, con revisión el 15 de diciembre, y ninguno es explotable en nuestro uso.
 - **En ejecución:** los contenedores no tienen permisos del sistema ni pueden modificar sus propios archivos. La única puerta de entrada exige cifrado moderno y limita las peticiones por usuario. El pipeline rechaza cualquier cambio que quite estas protecciones.
 - Mostrar un reporte descargable de un escaneo.
 
@@ -60,6 +62,7 @@ Se presenta en este orden: el repositorio (este archivo y el [README](./README.m
 - **Si falla un servicio:** los contenedores se reinician solos. Si falla un servicio externo (tipo de cambio o geolocalización), la operación sigue y solo falta ese dato.
 - **Si se pierde el servidor:** el pipeline lo recrea con la misma configuración, sin pasos manuales.
 - **Downtime:** un despliegue reinicia los contenedores y deja unos segundos sin servicio.
+- **Costo (estimación conservadora):** una hora sin servicio cuesta unos US$ 2.500. Con el despliegue manual, 3 de cada 10 despliegues fallaban y volver atrás llevaba unas 2 horas: unos US$ 12.000 por mes. Con el pipeline, unos US$ 1.000 por mes. Ahorro: US$ 11.000 por mes, más de US$ 130.000 por año, sin contar una filtración de datos (unos US$ 6 millones en promedio en el sector financiero).
 - **Mejoras de la Parte 1 resueltas:** escaneo automático en el pipeline, credenciales fuera de las computadoras del equipo, versiones rastreables por commit e infraestructura reproducible.
 - **Qué falta para producción real:** más de una instancia, una base de datos gestionada con backups y monitoreo con alertas.
 

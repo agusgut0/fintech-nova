@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinTech Nova · Sprint Demo · Parte 2</title>
+<!--
+  Presentación de la Sprint Demo (Parte 2).
+  - Un solo archivo: se abre con doble clic en cualquier navegador, sin internet.
+  - Escenario de 1600x900 que se escala a la pantalla.
+  - Fondo 3D en WebGL, sin librerías: 6.000 partículas de luz forman un objeto que
+    representa cada slide (contenedores, escudo, nube...). Al avanzar, el objeto estalla,
+    las partículas forman el siguiente y la cámara gira. Sin WebGL queda el fondo liso.
+  - Sin botones en pantalla. Teclas: flechas o clic para avanzar, N notas del orador, F pantalla completa.
+-->
+<style>
+/* ---------- Paleta: negro y azul. Un solo acento fuerte (azul) para lo importante ---------- */
+:root{
+  --bg:#04060b; --p1:#0a111f; --p2:#0f1a2e; --line:#1c2b48; --line2:#28406b;
+  --tx:#e9eef7; --mut:#8fa1bf; --dim:#5b6b86;
+  --bl:#2f7bff; --bl2:#5b9bff; --cy:#8fd0ff; --glow:rgba(47,123,255,.55);
+  --in:.95s;   /* demora de entrada de cada slide: espera a que se forme el objeto */
+  --sans:"Segoe UI Variable Display","Segoe UI",Inter,system-ui,sans-serif;
+  --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 var(--sans);overflow:hidden}
+:fullscreen,::backdrop{background:var(--bg)}
+
+/* ---------- Escena 3D de fondo: un objeto de partículas de luz (WebGL) por slide ---------- */
+#world{position:fixed;inset:0;overflow:hidden;transition:opacity .8s ease;
+  background:radial-gradient(ellipse 80% 60% at 70% 35%,#0b1a36 0,#04060b 70%)}
+#world canvas{position:absolute;inset:0;width:100%;height:100%}
+body[data-v=dim] #world{opacity:.32}
+body.moving #world{opacity:1}   /* durante la transición el objeto se ve completo */
+
+/* ---------- Escenario de slides ---------- */
+/* El texto sale girando y desenfocado mientras las partículas estallan;
+   la slide nueva entra (con --in de demora) cuando el objeto siguiente ya se está formando. */
+#vp{position:fixed;inset:0;z-index:1;overflow:hidden}
+#stage{width:1600px;height:900px;position:absolute;left:0;top:0;transform-origin:0 0;perspective:1300px}
+.slide{position:absolute;inset:0;padding:64px 96px 140px;opacity:0;visibility:hidden;filter:blur(10px);
+  transform:translate3d(160px,0,0) rotateY(-38deg);
+  transition:opacity .5s ease-in,transform .55s ease-in,filter .5s,visibility 0s .55s;backface-visibility:hidden}
+.slide.past{transform:translate3d(-160px,0,0) rotateY(38deg)}
+/* Slides con mucho contenido: el contenido ocupa 1050 px y deja libre la columna derecha para el objeto */
+.slide.side{padding-right:454px}
+.side .dec,.side .proof{width:auto}
+.side .par{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:28px}
+.side .lanes .lh,.side .lane{grid-template-columns:118px repeat(3,minmax(0,1fr))}
+.side .fnd{grid-template-columns:minmax(0,.78fr) minmax(0,1.12fr) minmax(0,1.4fr);gap:16px}
+.side .fnd .big{font-size:76px}
+.side .dots{margin:16px 0 10px}
+.side .risk p{font-size:15px;margin-bottom:10px}
+/* Hallazgos: "A futuro" pasa a la columna derecha, debajo de la lupa; los 15 puntos en dos filas */
+.side .dots{grid-template-columns:repeat(8,28px);gap:7px}
+.side .dots i{width:28px;height:28px;font-size:13px}
+.side .leg{font-size:15px;gap:14px;flex-wrap:wrap}
+.side .leg b{font-size:22px}
+.side .next{position:absolute;left:1180px;top:520px;width:330px;margin:0;flex-direction:column;gap:10px}
+.side .next>b{writing-mode:horizontal-tb;rotate:none;text-align:left;padding:0}
+.side .next div{flex:none;padding:10px 14px;font-size:15px;line-height:1.35}
+.slide.on{opacity:1;visibility:visible;transform:none;filter:none;
+  transition:opacity .8s ease var(--in),transform .9s cubic-bezier(.2,.8,.2,1) var(--in),filter .8s var(--in)}
+.veil::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,rgba(4,6,11,.97) 0,rgba(4,6,11,.9) 46%,rgba(4,6,11,0) 68%)}
+.slide>*{position:relative}
+.lbl{font:500 17px/1.2 var(--mono);color:var(--mut);margin:0 0 18px;letter-spacing:.02em}
+.lbl b{color:var(--cy);font-weight:600}
+h1{font:700 88px/1 var(--sans);letter-spacing:-.04em;margin:0;text-wrap:balance}
+h2{font:700 50px/1.06 var(--sans);letter-spacing:-.03em;margin:0 0 34px;max-width:1250px;text-wrap:balance}
+.bl{color:var(--bl2)}
+.mono{font-family:var(--mono)}
+.rise{opacity:0;translate:0 26px}
+.on .rise{animation:rise .8s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:calc(var(--d,0)*110ms + var(--in) + 150ms)}
+@keyframes rise{to{opacity:1;translate:0 0}}
+.card{background:linear-gradient(160deg,var(--p2),var(--p1));border:1px solid var(--line);border-radius:10px;padding:26px;
+  transition:rotate .25s ease,box-shadow .3s,border-color .3s}
+.card:hover{border-color:var(--line2);box-shadow:0 22px 50px -24px rgba(47,123,255,.55)}
+.tiltp{perspective:1200px}
+.big{font:700 92px/.9 var(--sans);letter-spacing:-.05em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.foot{margin-top:20px;font-size:17px;color:var(--mut)}
+
+/* ---------- Regla inferior: bloque y orador ---------- */
+#ruler{position:absolute;left:96px;right:96px;bottom:34px;height:66px;z-index:3;pointer-events:none}
+#ruler .base{position:absolute;left:0;right:0;bottom:22px;height:1px;background:var(--line2)}
+#ruler .tk{position:absolute;bottom:22px;width:1px;height:10px;background:var(--line2)}
+#ruler .tk.mj{height:18px;background:var(--mut)}
+#ruler .blk{position:absolute;bottom:34px;font:500 15px/1 var(--sans);color:var(--dim);white-space:nowrap;transition:color .4s}
+#ruler .blk.cur{color:var(--tx)}
+#ruler .blk.cur b{color:var(--cy)}
+#ruler .num{position:absolute;right:-74px;bottom:0;font:500 15px var(--mono);color:var(--mut)}
+#ptr{position:absolute;bottom:4px;width:0;height:0;margin-left:-8px;border:8px solid transparent;border-top:0;border-bottom:13px solid var(--bl);
+  filter:drop-shadow(0 0 6px var(--glow));transition:left .8s cubic-bezier(.2,.8,.2,1)}
+
+/* ---------- 1 · Apertura ---------- */
+.brand{font:500 26px var(--sans);margin:20px 0 0;color:var(--mut)}
+.brand span{color:var(--bl2)}
+.was{margin-top:30px;display:flex;gap:14px;align-items:baseline;font-size:19px;color:#a6b3c9;line-height:1.4}
+.was b{flex:none;font:600 14px var(--mono);color:var(--dim);border:1px solid var(--line2);border-radius:5px;padding:3px 9px}
+.flow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:22px}
+.flow span{position:relative;padding:14px 10px 13px;border:1px solid var(--line);border-radius:8px;background:rgba(10,17,31,.88);
+  font:600 15px/1.2 var(--sans);text-align:center;color:var(--mut);transition:all .4s ease}
+.flow span small{display:block;font:500 12px var(--mono);color:var(--dim);margin-bottom:5px}
+.on .flow span{animation:lit .45s ease forwards;animation-delay:calc(.9s + var(--in) + var(--j)*190ms)}
+@keyframes lit{to{border-color:var(--bl);color:var(--tx);background:linear-gradient(160deg,#0c2350,#0a1530);box-shadow:0 0 22px -6px var(--glow)}}
+.val{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:26px}
+.val .card{padding:20px 22px}
+.val b{display:block;font:700 21px/1.2 var(--sans);margin-bottom:6px}
+.val p{margin:0;font-size:16px;color:var(--mut);line-height:1.35}
+
+/* ---------- 5a · Qué pasa si algo falla ---------- */
+.rk{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.rk .card{padding:22px 24px}
+.rk small{display:block;font:600 13px var(--mono);color:var(--dim);margin-bottom:8px}
+.rk h3{margin:0 0 12px;font:700 23px/1.2 var(--sans);letter-spacing:-.01em}
+.rk p{margin:0;padding-top:12px;border-top:1px solid var(--line);font-size:17.5px;line-height:1.38;color:#c3cee0;display:flex;gap:10px}
+.rk p::before{content:"→";color:var(--cy);font-weight:700}
+
+/* ---------- 5b · Costo ---------- */
+.cost .hyp{font-size:18px;color:var(--mut);margin:-14px 0 22px}
+.cost .hyp b{color:var(--tx)}
+.cbar{display:grid;grid-template-columns:250px minmax(0,1fr) 170px;gap:18px;align-items:center;margin:14px 0}
+.cbar .nm b{display:block;font:700 20px var(--sans)}
+.cbar .nm span{font-size:14.5px;color:var(--mut);line-height:1.3;display:block}
+.cbar .tr{height:34px;background:#0d1628;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.cbar .tr i{display:block;height:100%;width:0;background:#41557a;transition:width 1.6s cubic-bezier(.2,.8,.2,1) calc(.7s + var(--in))}
+.cbar.fast .tr i{background:linear-gradient(90deg,var(--bl),var(--cy));box-shadow:0 0 14px var(--glow)}
+.on .cbar .tr i{width:var(--w)}
+.cbar .v{font:600 24px var(--mono);text-align:right;white-space:nowrap}
+.cbar.fast .v{color:var(--cy)}
+.cbar .v small{display:block;font:500 13px var(--sans);color:var(--dim)}
+.save{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;margin-top:24px}
+.save .card{padding:20px 24px}
+.save .hi{border-color:var(--bl);background:linear-gradient(160deg,#0c2350,#0a1530);box-shadow:0 0 40px -14px var(--glow)}
+.save .big{font-size:64px;color:var(--cy)}
+.save p{margin:8px 0 0;font-size:16.5px;color:var(--mut);line-height:1.35}
+.save p b{color:var(--tx)}
+.save .alt .big{font-size:50px;color:var(--tx)}
+
+/* ---------- 5c · Mejoras ---------- */
+.imp{display:grid;gap:14px}
+.imp .card{display:grid;grid-template-columns:64px minmax(0,1fr) 34px minmax(0,1fr);gap:18px;align-items:center;padding:20px 24px}
+.imp .n{font:700 44px/1 var(--sans);color:var(--cy);letter-spacing:-.04em}
+.imp small{display:block;font:600 13px var(--mono);color:var(--dim);margin-bottom:5px}
+.imp .now{font-size:18px;color:#a6b3c9;line-height:1.35}
+.imp .go{font:700 20px/1.3 var(--sans);color:var(--tx)}
+.imp .ar{height:2px;background:var(--line2);position:relative}
+.imp .ar::after{content:"";position:absolute;right:-2px;top:-5px;border:6px solid transparent;border-left:9px solid var(--bl);border-right:0}
+.imp .card:first-child{border-color:var(--bl)}
+
+/* ---------- 5d · Cierre ---------- */
+.end h2{font-size:60px;max-width:980px;margin-bottom:30px}
+.end .fromto{display:flex;align-items:center;gap:22px;font-size:22px;color:var(--mut)}
+.end .fromto b{color:var(--tx)}
+.end .fromto i{font-style:normal;color:var(--cy);font-size:28px}
+.thx{margin-top:56px;font:700 96px/1 var(--sans);letter-spacing:-.05em}
+.team{margin-top:18px;font:500 18px var(--mono);color:var(--mut)}
+
+/* ---------- 2a · Build: antes / ahora ---------- */
+.ba{display:grid;grid-template-columns:1fr 1fr;width:880px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.ba>div{padding:30px 34px 32px}
+.ba .then{background:rgba(10,17,31,.92)}
+.ba .now{background:linear-gradient(160deg,#0c2350,#0a1530)}
+.ba h3{font:700 28px/1.1 var(--sans);margin:6px 0 18px;letter-spacing:-.02em}
+.ba .who{font:500 15px var(--mono);color:var(--dim)}
+.ba .now .who{color:var(--cy)}
+.ba ul{list-style:none;margin:0;padding:0}
+.ba li{display:grid;grid-template-columns:30px 1fr;gap:12px;font-size:20px;line-height:1.35;padding:13px 0;border-top:1px solid var(--line)}
+.ba .then li{color:#a6b3c9}
+.ba .now li{border-color:#1f3a6e}
+.ba li i{font:700 15px/28px var(--mono);font-style:normal;text-align:center;width:28px;height:28px;border-radius:50%}
+.ba .then li i{border:1.5px solid var(--dim);color:var(--dim)}
+.ba .now li i{background:var(--bl);color:#fff}
+.run{display:flex;gap:16px;margin-top:22px;width:880px}
+.run .card{flex:1;padding:20px 24px}
+.run .big{font-size:58px;color:var(--cy)}
+.run p{margin:8px 0 0;font-size:16px;color:var(--mut);line-height:1.35}
+.run .src{flex:1.35}
+.run .src .big{font-size:24px;font-family:var(--mono);letter-spacing:0;color:var(--tx)}
+
+/* ---------- 2b · Paralelo y publicación ---------- */
+.par{display:grid;grid-template-columns:1fr 1.15fr;gap:40px}
+.cmp .row{display:grid;grid-template-columns:180px 1fr 120px;gap:14px;align-items:center;margin:14px 0;font-size:17px;color:var(--mut)}
+.cmp .tr{height:16px;background:#0d1628;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.cmp .tr i{display:block;height:100%;width:0;background:#41557a;transition:width 1.6s cubic-bezier(.2,.8,.2,1) calc(.7s + var(--in))}
+.cmp .fast i{background:linear-gradient(90deg,var(--bl),var(--cy));box-shadow:0 0 14px var(--glow)}
+.on .cmp .tr i{width:var(--w)}
+.cmp .row b{font:600 20px var(--mono);color:var(--tx);text-align:right;white-space:nowrap}
+.cmp .fast b{color:var(--cy)}
+.cmp .hd{display:flex;align-items:baseline;gap:18px;margin-bottom:6px}
+.cmp .hd .big{font-size:84px;color:var(--cy)}
+.cmp .hd span{font-size:20px;color:var(--mut);line-height:1.3}
+.lanes{padding:22px 24px}
+.lanes .lh,.lane{display:grid;grid-template-columns:150px repeat(3,1fr);gap:6px;align-items:center}
+.lanes .lh{font:500 13px var(--mono);color:var(--dim);margin-bottom:8px}
+.lane{margin:7px 0;font:500 15px var(--mono);color:var(--mut)}
+.lane s{height:14px;border-radius:2px;background:#0d1628;border:1px solid var(--line);text-decoration:none;position:relative;overflow:hidden}
+.lane s::after{content:"";position:absolute;inset:0;background:var(--bl);transform:scaleX(0);transform-origin:left;transition:transform .7s ease}
+.on .lane s::after{transform:scaleX(1)}
+.on .lane s:nth-of-type(1)::after{transition-delay:calc(.8s + var(--in) + var(--j)*60ms)}
+.on .lane s:nth-of-type(2)::after{transition-delay:calc(1.5s + var(--in) + var(--j)*60ms)}
+.on .lane s:nth-of-type(3)::after{transition-delay:calc(2.2s + var(--in) + var(--j)*60ms);background:var(--cy)}
+.lane.stop s:nth-of-type(2)::after{background:repeating-linear-gradient(135deg,#55657f 0 6px,#2b3850 6px 12px)}
+.lane.stop s:nth-of-type(3)::after{display:none}
+.lane.stop s:nth-of-type(3){border-style:dashed}
+.lane.stop{color:var(--tx)}
+.lanes .cap{margin-top:12px;font-size:15px;color:var(--mut)}
+.reg{display:grid;grid-template-columns:1fr 60px 1fr 60px 1fr;align-items:center;margin-top:28px}
+.reg .st{border:1px solid var(--line2);border-radius:10px;padding:16px 20px;background:rgba(10,17,31,.9)}
+.reg .st small{display:block;font:500 13px var(--mono);color:var(--dim);margin-bottom:4px}
+.reg .st b{font-size:20px}
+.reg .st p{margin:4px 0 0;font-size:15px;color:var(--mut)}
+.reg .st.fin{border-color:var(--bl);background:linear-gradient(160deg,#0c2350,#0a1530);box-shadow:0 0 40px -12px var(--glow)}
+.reg .ar{height:2px;background:var(--line2);position:relative;margin:0 8px}
+.reg .ar::after{content:"";position:absolute;right:-2px;top:-5px;border:6px solid transparent;border-left:9px solid var(--line2);border-right:0}
+.on .reg .ar{background:linear-gradient(90deg,var(--line2),var(--bl));background-size:200% 100%;animation:pulse 1.8s linear infinite}
+@keyframes pulse{from{background-position:100% 0}to{background-position:-100% 0}}
+.reg .no{grid-column:1/-1;margin-top:12px;font-size:17px;color:var(--mut)}
+.reg .no b{color:var(--tx)}
+
+/* ---------- 3a · Controles ---------- */
+.ctl{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+.ctl .card{min-height:250px;display:flex;flex-direction:column;padding:24px 22px}
+.ctl .n{font:600 14px var(--mono);color:var(--dim);margin-bottom:16px}
+.tool{align-self:flex-start;font:600 14px var(--mono);color:var(--cy);background:rgba(47,123,255,.16);border:1px solid #23457f;padding:4px 10px;border-radius:5px;margin-bottom:16px}
+.ctl h3{font:700 23px/1.15 var(--sans);margin:0 0 10px;letter-spacing:-.01em}
+.ctl p{margin:0;font-size:16.5px;line-height:1.4;color:var(--mut)}
+.ctl .card.img{border-color:#23457f;background:linear-gradient(160deg,#0c2350,#0a1530)}
+.pol{display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:16px;margin-top:22px}
+.pol>div{border-radius:10px;padding:20px 22px;border:1px solid var(--line)}
+.pol h4{margin:0 0 6px;font:700 20px var(--sans);display:flex;gap:10px;align-items:center}
+.pol h4 i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.pol p{margin:0;font-size:16.5px;color:var(--mut);line-height:1.4}
+.pol .stop{background:rgba(47,123,255,.1);border-color:var(--bl)}
+.pol .stop i{background:var(--bl);box-shadow:0 0 10px var(--glow)}
+.pol .inf i{border:2px solid var(--mut)}
+.pol .why{background:none;border:0;border-left:3px solid var(--bl);border-radius:0;font:500 20px/1.35 var(--sans);color:var(--tx);display:flex;align-items:center}
+
+/* ---------- 3b · Hallazgos ---------- */
+.fnd{display:grid;grid-template-columns:.9fr 1.35fr 1.15fr;gap:20px;align-items:stretch}
+.fnd .card{display:flex;flex-direction:column}
+.fnd .big{color:var(--cy)}
+.fnd .unit{font-size:19px;color:var(--tx);margin-top:12px;line-height:1.3}
+.fnd .sub{font-size:15.5px;color:var(--mut);margin-top:8px;line-height:1.35}
+.dots{display:grid;grid-template-columns:repeat(5,38px);gap:10px;margin:22px 0 14px}
+.dots i{width:38px;height:38px;border-radius:50%;border:2px solid var(--cy);display:grid;place-items:center;font:700 16px var(--mono);font-style:normal;color:transparent;
+  box-shadow:0 0 0 0 var(--glow)}
+.on .dots i.fx{animation:fix .45s ease forwards;animation-delay:calc(1.6s + var(--in) + var(--j)*120ms)}
+@keyframes fix{to{background:var(--bl);border-color:var(--bl);color:#fff;box-shadow:0 0 14px var(--glow)}}
+.dots i.ac{border-style:dashed;border-color:var(--mut)}
+.leg{display:flex;gap:22px;font-size:16px;color:var(--mut)}
+.leg b{color:var(--tx);font:700 26px var(--sans);margin-right:6px}
+.stopd{margin-top:auto;padding-top:16px;border-top:1px solid var(--line);font-size:16.5px;color:var(--tx)}
+.risk h4{margin:0 0 4px;font:700 19px var(--sans)}
+.risk p{margin:0 0 14px;font-size:15.5px;color:var(--mut);line-height:1.38}
+.risk .rev{margin-top:auto;font:600 15px var(--mono);color:var(--cy);border:1px solid #23457f;border-radius:6px;padding:8px 12px;align-self:flex-start}
+.next{margin-top:18px;display:flex;gap:14px;align-items:stretch}
+.next>b{font:600 14px var(--mono);color:var(--cy);writing-mode:vertical-rl;rotate:180deg;text-align:center;padding:6px 0}
+.next div{flex:1;border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:16px;color:var(--mut);background:rgba(10,17,31,.8)}
+
+/* ---------- 4a · Infraestructura y acceso ---------- */
+.dec{display:grid;grid-template-columns:1fr 1fr;gap:20px;width:1150px}
+.dec .card{padding:24px 28px}
+.dec h3{font:700 27px/1.1 var(--sans);margin:0 0 14px;display:flex;gap:12px;align-items:center}
+.dec h3 span{font:600 14px var(--mono);color:var(--cy);border:1px solid #23457f;border-radius:5px;padding:3px 9px}
+.dec dl{margin:0;display:grid;grid-template-columns:130px 1fr;gap:0}
+.dec dt,.dec dd{margin:0;padding:11px 0;border-top:1px solid var(--line);font-size:17px;line-height:1.38}
+.dec dt{font:600 14px/1.6 var(--mono);color:var(--dim)}
+.dec dd{color:#c3cee0}
+.dec dd.gain{color:var(--tx);font-weight:600}
+.dec dt.gain{color:var(--cy)}
+.proof{display:flex;align-items:center;gap:30px;margin-top:22px;width:1150px;border:1px solid var(--bl);border-radius:12px;padding:20px 30px;
+  background:linear-gradient(90deg,rgba(47,123,255,.2),rgba(10,17,31,.85) 60%)}
+.proof .big{font-size:86px;color:var(--cy)}
+.proof p{margin:0;font-size:21px;line-height:1.35}
+.proof p small{display:block;font-size:16px;color:var(--mut);margin-top:4px}
+
+/* ---------- 4b · Verificación ---------- */
+.ver{width:860px}
+.chk{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
+.chk div{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:13px 16px;border:1px solid var(--line);border-radius:8px;
+  background:rgba(10,17,31,.88);font-size:18px;opacity:0;translate:-14px 0}
+.on .chk div{animation:rise .5s ease forwards;animation-delay:calc(.5s + var(--in) + var(--j)*180ms)}
+.chk i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 15px var(--mono);font-style:normal;background:#13213b;color:transparent}
+.on .chk i{animation:tick .35s ease forwards;animation-delay:calc(.8s + var(--in) + var(--j)*180ms)}
+@keyframes tick{to{background:var(--bl);color:#fff;box-shadow:0 0 12px var(--glow)}}
+.chk code{font:500 14px var(--mono);color:var(--dim)}
+.chk .lock{grid-column:1/-1;border-color:#23457f;background:linear-gradient(90deg,#0c2350,#0a1530)}
+.chk .lock code{color:var(--cy)}
+.why2{margin-top:20px;border-left:3px solid var(--bl);padding:4px 0 4px 18px;font-size:19px;line-height:1.4;color:#c3cee0}
+.red{display:flex;gap:22px;align-items:center;margin-top:22px}
+.red .card{flex:1;padding:18px 22px;font-size:18px}
+.red .card b{display:block;font:700 22px var(--sans);margin-bottom:4px}
+.red .card p{margin:0;color:var(--mut);font-size:16px}
+.live{flex:none;font:600 18px var(--sans);color:#fff;background:var(--bl);border-radius:999px;padding:14px 26px;box-shadow:0 0 30px var(--glow);
+  animation:breath 2.4s ease-in-out infinite}
+@keyframes breath{50%{box-shadow:0 0 50px var(--glow),0 0 0 8px rgba(47,123,255,.15)}}
+
+/* ---------- Controles del orador ---------- */
+#notes{position:fixed;left:16px;right:16px;top:66px;max-width:880px;margin:auto;background:#0b1428;border:1px solid var(--bl);color:var(--tx);border-radius:10px;
+  padding:18px 24px;z-index:6;display:none;box-shadow:0 20px 50px -20px #000}
+#notes.show{display:block}
+#notes h5{margin:0 0 8px;font:500 14px var(--mono);color:var(--cy)}
+#notes p{margin:4px 0;font-size:16px}
+#help{position:fixed;left:14px;top:14px;font:500 13px var(--sans);color:var(--mut);z-index:6;transition:opacity 1s;background:var(--p1);padding:8px 12px;border-radius:8px;border:1px solid var(--line)}
+@media (prefers-reduced-motion:reduce){:root{--in:0s}*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media (max-width:700px){#help{display:none}}
+</style>
+</head>
+<body data-v="full">
+
+<!-- Escena 3D: objeto de partículas que cambia de forma en cada slide -->
+<div id="world" aria-hidden="true"><canvas id="gl"></canvas></div>
+
+<div id="vp"><div id="stage">
+
+<!-- 1 · Apertura -->
+<section class="slide side" data-v="full" data-n="Hernán · Apertura (50 s)|Somos el Grupo 6. En la entrega anterior, poner una versión en producción dependía de una sola persona: construía todo en su computadora y lo subía al servidor con un script. Si no estaba, no había despliegue, y nadie controlaba la seguridad de lo que se publicaba.|En este sprint eso cambió: cada cambio aprobado pasa por un circuito automático que lo valida, lo construye, controla su seguridad, lo publica, crea el servidor en AWS, lo despliega y comprueba que funcione.|Tres cosas: nada llega a producción sin control, cualquiera del equipo despliega con un botón y cada versión se rastrea hasta su cambio. Cada uno va a contar un tramo.">
+  <p class="lbl rise">Sprint Demo · Parte 2</p>
+  <h1 class="rise" style="--d:1">FinTech Nova</h1>
+  <p class="brand rise" style="--d:2">Del cambio a producción, sin depender de una persona <span>/</span> Grupo 6</p>
+  <p class="was rise" style="--d:3"><b>ANTES</b>Una persona construía todo en su computadora y lo subía con un script. Si no estaba, no había despliegue, y nadie controlaba la seguridad.</p>
+  <div class="flow rise" style="--d:4">
+    <span style="--j:0"><small>01</small>Valida</span><span style="--j:1"><small>02</small>Construye</span><span style="--j:2"><small>03</small>Controla la seguridad</span>
+    <span style="--j:3"><small>04</small>Publica</span><span style="--j:4"><small>05</small>Crea el servidor</span><span style="--j:5"><small>06</small>Despliega</span><span style="--j:6"><small>07</small>Comprueba</span>
+  </div>
+  <div class="val">
+    <div class="card rise" style="--d:6"><b>Nada llega sin control</b><p>Cada cambio pasa por los mismos controles antes de producción.</p></div>
+    <div class="card rise" style="--d:7"><b>Despliega cualquiera</b><p>Con un botón, sin depender de la computadora de nadie.</p></div>
+    <div class="card rise" style="--d:8"><b>Todo se rastrea</b><p>Cada versión lleva el identificador del cambio que la originó.</p></div>
+  </div>
+</section>
+
+<!-- 2a · Build y publicación -->
+<section class="slide veil" data-v="full" data-n="Ezequiel · Build y publicación (1 de 2)|Mostrar el pipeline #17424.|Antes: los 7 componentes se construían a mano en la computadora de un integrante. Ahora: solos, con cada cambio, desde el repositorio.|38 tareas en unos 23 minutos. Ejecutor del proyecto: reutiliza su motor de contenedores, menos recursos y más estable.">
+  <p class="lbl rise">Build y publicación</p>
+  <h2 class="rise" style="--d:1">Lo que corre en producción<br>sale siempre del <span class="bl">repositorio</span></h2>
+  <div class="ba rise" style="--d:2">
+    <div class="then"><div class="who">Entrega anterior</div><h3>A mano</h3><ul>
+      <li><i>×</i>Los 7 componentes se construían en la computadora de un integrante</li>
+      <li><i>×</i>Todas las versiones se llamaban igual</li>
+      <li><i>×</i>No se sabía con certeza qué código estaba en producción</li></ul></div>
+    <div class="now"><div class="who">Hoy</div><h3>Con cada cambio</h3><ul>
+      <li><i>✓</i>Se construyen solos, a partir del código del repositorio</li>
+      <li><i>✓</i>Cada imagen lleva el identificador del cambio que la generó</li>
+      <li><i>✓</i>Se puede volver a cualquier versión anterior</li></ul></div>
+  </div>
+  <div class="run">
+    <div class="card rise" style="--d:4"><div class="big"><span data-from="0" data-to="38">0</span></div><p>tareas automáticas en cada corrida</p></div>
+    <div class="card rise" style="--d:5"><div class="big">~<span data-from="0" data-to="23">0</span> min</div><p>del cambio a la imagen lista</p></div>
+    <div class="card src rise" style="--d:6"><div class="big">#17424</div><p>Última corrida. Ejecutor propio del proyecto: menos recursos, más estable.</p></div>
+  </div>
+</section>
+
+<!-- 2b · Paralelo y publicación -->
+<section class="slide side" data-v="full" data-n="Ezequiel · Build y publicación (2 de 2)|Los 7 componentes se construyen, se analizan y se publican al mismo tiempo.|Solo el análisis, uno detrás del otro: unos 48 minutos. En paralelo: menos de 9. Si uno falla, queda aislado.|Publicación: candidata en el registro interno de la facultad; definitiva solo si pasa todos los controles. Una imagen con fallas nunca llega a producción.">
+  <p class="lbl">Build y publicación</p>
+  <h2 class="rise">Siete componentes al mismo tiempo. Si uno falla, los demás siguen</h2>
+  <div class="par">
+    <div class="cmp rise" style="--d:1">
+      <div class="hd"><div class="big">&lt; 9 min</div><span>para analizar<br>las 7 imágenes</span></div>
+      <div class="row"><span>Uno detrás del otro</span><div class="tr"><i style="--w:100%"></i></div><b>~48 min</b></div>
+      <div class="row fast"><span>En paralelo</span><div class="tr"><i style="--w:18.5%"></i></div><b>&lt; 9 min</b></div>
+      <p class="foot">Cada cambio está listo antes, sin esperar a que termine el componente anterior.</p>
+    </div>
+    <div class="card lanes rise" style="--d:2">
+      <div class="lh"><span>componente</span><span>construir</span><span>analizar</span><span>publicar</span></div>
+      <div class="lane" style="--j:0"><span>web</span><s></s><s></s><s></s></div>
+      <div class="lane" style="--j:1"><span>base de datos</span><s></s><s></s><s></s></div>
+      <div class="lane" style="--j:2"><span>clientes</span><s></s><s></s><s></s></div>
+      <div class="lane stop" style="--j:3"><span>pagos ✕</span><s></s><s></s><s></s></div>
+      <div class="lane" style="--j:4"><span>facturas</span><s></s><s></s><s></s></div>
+      <div class="lane" style="--j:5"><span>transacciones</span><s></s><s></s><s></s></div>
+      <div class="lane" style="--j:6"><span>tarjetas</span><s></s><s></s><s></s></div>
+      <div class="cap">Ejemplo: si un componente falla, se frena solo ese. Los otros seis continúan.</div>
+    </div>
+  </div>
+  <div class="reg rise" style="--d:4">
+    <div class="st"><small>registro interno de la facultad</small><b>Candidata</b><p>Cada imagen nace acá</p></div>
+    <div class="ar"></div>
+    <div class="st"><small>controles</small><b>Seguridad</b><p>Tiene que pasarlos todos</p></div>
+    <div class="ar"></div>
+    <div class="st fin"><small>registro de producción</small><b>Definitiva</b><p>De acá descarga producción</p></div>
+    <div class="no"><b>Una imagen con fallas nunca llega a producción:</b> se queda como candidata.</div>
+  </div>
+</section>
+
+<!-- 3a · Seguridad: controles -->
+<section class="slide side" data-v="full" data-n="Fabrizio · Seguridad (1 de 2)|Cada vez que se sube código, el pipeline revisa cinco cosas por su cuenta, antes de publicar.|Una frase por herramienta. Mostrar un reporte descargable.|Decisión clave: frenamos solo lo que se puede corregir hoy; el resto se informa. Así el control no termina ignorándose.">
+  <p class="lbl">Seguridad</p>
+  <h2 class="rise">Cinco controles revisan cada cambio antes de publicar</h2>
+  <div class="ctl tiltp">
+    <div class="card rise" style="--d:1"><span class="n">01</span><span class="tool">Gitleaks</span><h3>Secretos</h3><p>Contraseñas y claves expuestas, incluido todo el historial.</p></div>
+    <div class="card rise" style="--d:2"><span class="n">02</span><span class="tool">Semgrep</span><h3>Código</h3><p>Código inseguro en las cinco APIs y el frontend.</p></div>
+    <div class="card rise" style="--d:3"><span class="n">03</span><span class="tool">Hadolint</span><h3>Construcción</h3><p>Buenas prácticas al construir las imágenes.</p></div>
+    <div class="card rise" style="--d:4"><span class="n">04</span><span class="tool">Trivy</span><h3>Librerías</h3><p>Dependencias con fallas conocidas.</p></div>
+    <div class="card img rise" style="--d:5"><span class="n">05</span><span class="tool">Trivy</span><h3>Imágenes</h3><p>Las 7 imágenes ya construidas, todas a la vez.</p></div>
+  </div>
+  <div class="pol">
+    <div class="stop rise" style="--d:6"><h4><i></i>Falla grave con solución</h4><p>Se frena la publicación. El servicio que ya funciona no se toca.</p></div>
+    <div class="inf rise" style="--d:7"><h4><i></i>Sin solución todavía</h4><p>Se informa y queda registrada. No bloquea.</p></div>
+    <div class="why rise" style="--d:8">Frenamos solo lo que se puede corregir hoy, para que el control no se convierta en un obstáculo que termina ignorándose.</div>
+  </div>
+  <p class="foot rise" style="--d:9">Cada análisis deja un reporte descargable en cada corrida.</p>
+</section>
+
+<!-- 3b · Seguridad: hallazgos -->
+<section class="slide side" data-v="full" data-n="Fabrizio · Seguridad (2 de 2)|Ninguna contraseña expuesta en los 45 commits de todas las ramas.|Primera corrida: 15 vulnerabilidades críticas en 5 de las 7 imágenes, en producción desde la entrega anterior. El pipeline se detuvo antes de publicarlas. Corregimos 13, aceptamos 2.|Justificar los dos riesgos y cerrar con lo que sigue.">
+  <p class="lbl">Seguridad</p>
+  <h2 class="rise">Encontramos fallas que estaban en producción y nadie conocía</h2>
+  <div class="fnd">
+    <div class="card rise" style="--d:1"><div class="big">0</div>
+      <div class="unit">contraseñas o claves expuestas</div><div class="sub">en los 45 commits de todas las ramas</div>
+      <div class="stopd">Historial completo revisado, no solo el último cambio.</div></div>
+    <div class="card rise" style="--d:2"><div class="big">15</div>
+      <div class="unit">vulnerabilidades críticas en 5 de las 7 imágenes</div><div class="sub">en producción desde la entrega anterior</div>
+      <div class="dots">
+        <i class="fx" style="--j:0">✓</i><i class="fx" style="--j:1">✓</i><i class="fx" style="--j:2">✓</i><i class="fx" style="--j:3">✓</i><i class="fx" style="--j:4">✓</i>
+        <i class="fx" style="--j:5">✓</i><i class="fx" style="--j:6">✓</i><i class="fx" style="--j:7">✓</i><i class="fx" style="--j:8">✓</i><i class="fx" style="--j:9">✓</i>
+        <i class="fx" style="--j:10">✓</i><i class="fx" style="--j:11">✓</i><i class="fx" style="--j:12">✓</i><i class="ac"></i><i class="ac"></i></div>
+      <div class="leg"><span><b>13</b>corregidas</span><span><b>2</b>aceptadas como riesgo</span></div>
+      <div class="stopd">El pipeline se detuvo <b>antes</b> de publicarlas.</div></div>
+    <div class="card risk rise" style="--d:3">
+      <h4>Base de datos</h4><p>El componente afectado solo se usa al arrancar y no hace conexiones seguras. La corrección depende de una imagen nueva del proveedor.</p>
+      <h4>Facturas</h4><p>Corregirlo exige migrar a una versión mayor del framework, y la API no usa la función afectada.</p>
+      <span class="rev">Documentados · revisión 15/12</span></div>
+  </div>
+  <div class="next rise" style="--d:5"><b>A FUTURO</b>
+    <div>Actualizar el framework de la API de clientes y quitarle sus credenciales de prueba</div>
+    <div>Renovar las imágenes base más antiguas</div>
+    <div>Conservar el reporte completo, incluidas las fallas que todavía no tienen solución</div>
+  </div>
+</section>
+
+<!-- 4a · Despliegue: infraestructura y acceso -->
+<section class="slide side" data-v="full" data-n="Agustín · Despliegue y verificación (1 de 2)|Mostrar los jobs de infraestructura y deploy.|Infraestructura: construí → decidí (botón, el entorno está apagado casi siempre) → gana la empresa (volver no depende de una persona).|Acceso: solo el pipeline entra. Credencial de solo lectura que no queda guardada.|Prueba: en la última sesión, producción completa desde cero dos veces, sin la consola de AWS.">
+  <p class="lbl">Despliegue y verificación en AWS</p>
+  <h2 class="rise">Producción se levanta desde cero, con un botón</h2>
+  <div class="dec tiltp">
+    <div class="card rise" style="--d:1"><h3>Infraestructura <span>01</span></h3><dl>
+      <dt>Construí</dt><dd>Una etapa del pipeline que crea el servidor completo desde cero, siempre con la misma configuración.</dd>
+      <dt>Decidí</dt><dd>Que se active con un botón y no sola, porque el entorno está apagado la mayor parte del tiempo.</dd>
+      <dt class="gain">Gana la empresa</dt><dd class="gain">Si se pierde el servidor, volver no depende de una persona ni de que recuerde los pasos.</dd></dl></div>
+    <div class="card rise" style="--d:2"><h3>Acceso <span>02</span></h3><dl>
+      <dt>Construí</dt><dd>Solo el pipeline entra al servidor. El servidor descarga las imágenes con una credencial que solo permite leer y no queda guardada.</dd>
+      <dt>Decidí</dt><dd>Ningún integrante entra desde su computadora. Perdemos comodidad para investigar, ganamos control.</dd>
+      <dt class="gain">Gana la empresa</dt><dd class="gain">Una notebook robada o una credencial filtrada no alcanzan para entrar, y todo cambio queda registrado.</dd></dl></div>
+  </div>
+  <div class="proof rise" style="--d:4"><div class="big">2×</div>
+    <p>En la última sesión, el pipeline levantó producción completa desde cero dos veces.<small>Nuestro entorno se borra en cada sesión. No tocamos la consola de AWS.</small></p></div>
+</section>
+
+<!-- 4b · Verificación -->
+<section class="slide veil" data-v="full" data-n="Agustín · Despliegue y verificación (2 de 2)|Mostrar el job de verificación.|Después de cada despliegue: la web y las cinco APIs responden. Además, el acceso sin cifrar sigue cerrado: un error en las reglas no se nota a simple vista.|Si algo falla, el pipeline queda en rojo. Pasar a la app en vivo.">
+  <p class="lbl">Despliegue y verificación en AWS</p>
+  <h2 class="rise">Si algo falla, lo detectamos nosotros,<br>no un <span class="bl">cliente</span></h2>
+  <div class="ver">
+    <div class="chk">
+      <div style="--j:0"><i>✓</i>Web<code>HTTPS</code></div>
+      <div style="--j:1"><i>✓</i>API de clientes<code>HTTPS</code></div>
+      <div style="--j:2"><i>✓</i>API de pagos<code>HTTPS</code></div>
+      <div style="--j:3"><i>✓</i>API de facturas<code>HTTPS</code></div>
+      <div style="--j:4"><i>✓</i>API de transacciones<code>HTTPS</code></div>
+      <div style="--j:5"><i>✓</i>API de tarjetas<code>HTTPS</code></div>
+      <div class="lock" style="--j:6"><i>✓</i>El acceso sin cifrar sigue cerrado<code>un error de reglas no se ve a simple vista</code></div>
+    </div>
+    <div class="red rise" style="--d:12">
+      <div class="card"><b>Después de cada despliegue</b><p>Si una comprobación falla, el pipeline queda en rojo.</p></div>
+      <span class="live">→ La aplicación, en vivo</span>
+    </div>
+  </div>
+</section>
+
+<!-- 5a · Qué pasa si algo falla -->
+<section class="slide side" data-v="full" data-n="Hernán · Riesgos (1 de 4)|Qué pasa si algo falla.|Se cae un servicio: se reinicia solo. Falla un proveedor externo (tipo de cambio o geolocalización): la operación se registra igual y solo falta ese dato.|Perdemos el servidor: el pipeline lo recrea desde cero con la misma configuración. Una versión nueva sale mal: la verificación lo detecta y volvemos a la anterior.">
+  <p class="lbl">Riesgos, costo y mejoras</p>
+  <h2 class="rise">Qué pasa si algo falla</h2>
+  <div class="rk tiltp">
+    <div class="card rise" style="--d:1"><small>01 · servicio</small><h3>Se cae un servicio</h3><p>Se reinicia solo.</p></div>
+    <div class="card rise" style="--d:2"><small>02 · proveedor externo</small><h3>Falla el tipo de cambio o la geolocalización</h3><p>La operación se registra igual. Solo falta ese dato.</p></div>
+    <div class="card rise" style="--d:3"><small>03 · servidor</small><h3>Perdemos el servidor</h3><p>El pipeline lo recrea desde cero, con la misma configuración.</p></div>
+    <div class="card rise" style="--d:4"><small>04 · versión</small><h3>Una versión nueva sale mal</h3><p>La verificación lo detecta y volvemos a la anterior.</p></div>
+  </div>
+</section>
+
+<!-- 5b · Costo -->
+<section class="slide side cost" data-v="full" data-n="Hernán · Costo (2 de 4)|Estimación con supuestos conservadores: una hora sin servicio cuesta unos US$ 2.500 (operaciones que no se cobran, soporte y equipo detenido).|Manual: 3 de cada 10 despliegues fallaban y tardábamos unas 2 horas en darnos cuenta y volver atrás: unos US$ 12.000 por mes.|Pipeline: la mayoría de los errores se frenan antes; si algo pasa, volvemos en media hora: unos US$ 1.000 por mes.|Ahorro: US$ 11.000 por mes, más de 130.000 por año. Sin contar lo más caro: una filtración en el sector financiero cuesta en promedio unos US$ 6 millones.">
+  <p class="lbl">Riesgos, costo y mejoras</p>
+  <h2 class="rise">Cuánto cuesta una caída</h2>
+  <p class="hyp rise" style="--d:1">Una hora sin servicio: <b>~US$ 2.500</b>, entre operaciones sin cobrar, soporte y equipo detenido.</p>
+  <div class="cbar rise" style="--d:2"><div class="nm"><b>Despliegue manual</b><span>3 de cada 10 fallaban · ~2 h para volver atrás</span></div>
+    <div class="tr"><i style="--w:100%"></i></div><div class="v">US$ <span data-from="0" data-to="12000">0</span><small>por mes en caídas</small></div></div>
+  <div class="cbar fast rise" style="--d:3"><div class="nm"><b>Con el pipeline</b><span>La mayoría se frena antes · 30 min para volver</span></div>
+    <div class="tr"><i style="--w:8.3%"></i></div><div class="v">US$ <span data-from="0" data-to="1000">0</span><small>por mes en caídas</small></div></div>
+  <div class="save">
+    <div class="card hi rise" style="--d:5"><div class="big">US$ <span data-from="0" data-to="11000">0</span></div><p>de ahorro por mes: <b>más de US$ 130.000 por año</b>.</p></div>
+    <div class="card alt rise" style="--d:6"><div class="big">US$ 6 M</div><p>Costo promedio de una filtración de datos en el sector financiero. <b>El riesgo más caro</b>, y no está en la cuenta.</p></div>
+  </div>
+  <p class="foot rise" style="--d:7">Estimación con supuestos conservadores.</p>
+</section>
+
+<!-- 5c · Mejoras -->
+<section class="slide side" data-v="full" data-n="Hernán · Mejoras (3 de 4)|Qué recomendamos para el próximo sprint, por prioridad.|1. Hoy hay un solo servidor: si cae, cae todo. Más de una instancia.|2. La base de datos vive en ese mismo servidor y no tiene copias de seguridad. Base gestionada con backups automáticos.|3. No hay monitoreo: nos enteramos de una caída cuando alguien la ve. Alertas.">
+  <p class="lbl">Riesgos, costo y mejoras</p>
+  <h2 class="rise">Próximo sprint: tres mejoras, por prioridad</h2>
+  <div class="imp">
+    <div class="card rise" style="--d:1"><span class="n">1</span><div><small>hoy</small><div class="now">Hay un solo servidor: si cae, cae todo.</div></div><span class="ar"></span><div><small>proponemos</small><div class="go">Más de una instancia</div></div></div>
+    <div class="card rise" style="--d:2"><span class="n">2</span><div><small>hoy</small><div class="now">La base de datos vive en ese servidor, sin copias de seguridad.</div></div><span class="ar"></span><div><small>proponemos</small><div class="go">Base gestionada con backups automáticos</div></div></div>
+    <div class="card rise" style="--d:3"><span class="n">3</span><div><small>hoy</small><div class="now">Sin monitoreo: nos enteramos cuando alguien ve la caída.</div></div><span class="ar"></span><div><small>proponemos</small><div class="go">Alertas</div></div></div>
+  </div>
+</section>
+
+<!-- 5d · Cierre -->
+<section class="slide veil end" data-v="full" data-n="Hernán · Cierre (4 de 4)|En resumen: pasamos de un despliegue manual que dependía de una persona a uno automático, controlado y verificable.|Gracias.">
+  <p class="lbl rise">En resumen</p>
+  <h2 class="rise" style="--d:1">Un despliegue <span class="bl">automático, controlado y verificable</span></h2>
+  <div class="fromto rise" style="--d:2"><span>Antes: <b>manual, dependía de una persona</b></span><i>→</i><span>Hoy: <b>cualquiera, con un botón</b></span></div>
+  <div class="thx rise" style="--d:4">Gracias</div>
+  <p class="team rise" style="--d:5">Grupo 6 · Hernán · Ezequiel · Fabrizio · Agustín</p>
+</section>
+
+<div id="ruler"><div class="base"></div><div id="rt"></div><div id="ptr"></div><div class="num" id="rnum">01 / 11</div></div>
+</div></div>
+
+<div id="notes" aria-live="polite"></div>
+<div id="help">→ ← avanzar · N notas · F pantalla completa</div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const S=[...document.querySelectorAll('.slide')],stage=$('stage'),root=document.documentElement;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let cur=-1,raf=[],mv=null;
+
+// ---------- Escena 3D: partículas de luz (WebGL, sin librerías) ----------
+// Cada slide tiene un objeto (sh), el centro donde se dibuja en píxeles del escenario
+// de 1600x900 (px, py) y su escala (s). Las slides "side" le dejan libre la columna derecha.
+// Al cambiar de slide, el objeto estalla y sus partículas vuelan a formar el siguiente.
+const SC=[
+  {sh:'planeta',px:1370,py:350,s:.5},      // apertura
+  {sh:'contenedores',px:1250,py:430,s:.75}, // build: los 7 componentes
+  {sh:'carriles',px:1375,py:400,s:.62},     // paralelo: 7 carriles, uno frenado
+  {sh:'escudo',px:1370,py:430,s:.58},       // controles de seguridad
+  {sh:'lupa',px:1345,py:300,s:.62},         // hallazgos
+  {sh:'nube',px:1375,py:410,s:.72},         // infraestructura en AWS
+  {sh:'radar',px:1210,py:430,s:.95},        // verificación: web + 5 APIs
+  {sh:'ciclo',px:1350,py:390,s:.72},        // riesgos: se recupera solo
+  {sh:'monedas',px:1370,py:420,s:.72},      // costo: US$ 12.000 contra 1.000
+  {sh:'instancias',px:1365,py:400,s:.62},   // mejoras: más de una instancia
+  {sh:'nudo',px:1165,py:420,s:1}            // cierre
+];
+const Scene=(()=>{
+  const cv=$('gl'),gl=cv.getContext('webgl',{antialias:true,premultipliedAlpha:false});
+  if(!gl)return{to(){},resize(){}};          // sin WebGL: queda el fondo liso
+  const NP=6000,rnd=Math.random,R=()=>rnd()*2-1,TAU=Math.PI*2;
+  const unit=()=>{let x,y,z,l;do{x=R();y=R();z=R();l=x*x+y*y+z*z}while(l>1||l<.01);l=Math.sqrt(l);return[x/l,y/l,z/l]};
+  // Puntos sobre las aristas de una caja (80 %) y sobre sus caras (20 %).
+  const box=(cx,cy,cz,sx,sy,sz)=>{const p=[R(),R(),R()],ax=Math.floor(rnd()*3);
+    if(rnd()<.8){for(let k=0;k<3;k++)if(k!==ax)p[k]=rnd()<.5?-1:1}else p[ax]=rnd()<.5?-1:1;
+    return[cx+p[0]*sx,cy+p[1]*sy,cz+p[2]*sz]};
+  const SH={
+    nebulosa:()=>{const u=unit(),r=3+rnd()*6;return[u[0]*r,u[1]*r,u[2]*r]},
+    planeta:k=>{if(k<NP*.72){const u=unit();return u.map(v=>v*1.5)}
+      const a=rnd()*TAU,r=1.95+R()*.1,x=Math.cos(a)*r;return[x,x*.35+R()*.03,Math.sin(a)*r]},
+    contenedores:k=>{const i=k%7,a=i/7*TAU;return box(Math.cos(a)*1.55,Math.sin(i*1.7)*.15,Math.sin(a)*1.55,.32,.32,.32)},
+    carriles:k=>{const i=k%7,len=i===3?.32:1;return[-2+rnd()*4*len,(3-i)*.36+R()*.025,R()*.05]},
+    escudo:()=>{let x,y;for(;;){y=R()*1.45-.15;x=R()*1.25;const w=y>.35?1.25:1.25*Math.sqrt(Math.max(0,(y+1.6)/1.95));
+        if(Math.abs(x)<=w){if(rnd()<.45)x=Math.sign(x||1)*w;break}}
+      if(rnd()<.18){const t=rnd(),P=t<.35?[-.5+t/.35*.38,.05-t/.35*.38]:[-.12+(t-.35)/.65*.75,-.33+(t-.35)/.65*.8];return[P[0]*1.3,P[1]*1.3,.55]}
+      return[x*1.3,y*1.3,(1-x*x/2)*.35+R()*.03]},
+    lupa:k=>{const b=rnd()*TAU;
+      if(k<NP*.6){const a=rnd()*TAU,r=1+.13*Math.cos(b);return[-.35+r*Math.cos(a),.35+r*Math.sin(a),.13*Math.sin(b)]}
+      if(k<NP*.85){const t=rnd()*1.3,c=Math.cos(b)*.16;return[.42+t*.707+c*.707,-.42-t*.707+c*.707,Math.sin(b)*.16]}
+      const a=rnd()*TAU,r=Math.sqrt(rnd())*.9;return[-.35+r*Math.cos(a),.35+r*Math.sin(a),R()*.02]},
+    nube:k=>{if(k<NP*.62){const C=[[-.85,.55,0,.7],[0,.95,0,.9],[.85,.55,0,.7],[0,.45,.45,.6]][k%4],u=unit();
+        return[C[0]+u[0]*C[3],C[1]+u[1]*C[3]*.85,C[2]+u[2]*C[3]]}
+      return box(0,-.55-(k%3)*.42,0,.85,.15,.5)},
+    radar:k=>{if(k<NP*.5){const r=[.6,1.2,1.8][k%3],a=rnd()*TAU;return[Math.cos(a)*r,Math.sin(a)*r,R()*.02]}
+      if(k<NP*.62){const r=rnd()*1.8;return[Math.cos(.8)*r+R()*.02,Math.sin(.8)*r+R()*.02,0]}
+      const A=[.3,1.4,2.3,3.2,4.3,5.4],D=[1.5,.9,1.6,1.1,1.5,.8],i=k%6,u=unit(),g=rnd()*.1;
+      return[Math.cos(A[i])*D[i]+u[0]*g,Math.sin(A[i])*D[i]+u[1]*g,u[2]*g]},
+    // Flecha circular (reinicio): anillo de 300° con punta.
+    ciclo:k=>{if(k<NP*.8){const a=.35+rnd()*TAU*.83,b=rnd()*TAU,r=1.35+.16*Math.cos(b);return[r*Math.cos(a),r*Math.sin(a),.16*Math.sin(b)]}
+      const a1=.35+TAU*.83,t=rnd(),w=1.35+(1-t)*.42*R(),c=Math.cos(a1),sn=Math.sin(a1);return[w*c-t*.55*sn,w*sn+t*.55*c,R()*.05]},
+    // Dos pilas de monedas: alta contra una sola moneda (costo mensual de las caídas).
+    monedas:k=>{const big=k<NP*.88,n=big?Math.floor(rnd()*8):0,cx=big?-.7:.95,y=-1.2+n*.32,a=rnd()*TAU,
+        e=rnd()<.7,r=e?.62:Math.sqrt(rnd())*.62;return[cx+r*Math.cos(a),y+(e?R()*.05:(rnd()<.5?-.05:.05)),r*Math.sin(a)]},
+    // Tres servidores iguales, uno al lado del otro.
+    instancias:k=>{const i=k%3,j=Math.floor(rnd()*4);return box((i-1)*1.3,-.8+j*.52,0,.42,.17,.22)},
+    nudo:()=>{const t=rnd()*TAU,r=1.15+.5*Math.cos(3*t),u=unit();return[r*Math.cos(2*t)+u[0]*.13,r*Math.sin(2*t)+u[1]*.13,.6*Math.sin(3*t)+u[2]*.13]}
+  };
+  // Las formas con volumen giran sin parar; las planas se balancean de frente para que se lean.
+  const SPIN={nebulosa:1,planeta:1,contenedores:1,nube:1,nudo:1};
+  const cache={},shape=n=>cache[n]||(cache[n]=(()=>{const f=new Float32Array(NP*3);for(let k=0;k<NP;k++)f.set(SH[n](k),k*3);return f})());
+
+  // Cada partícula mezcla su posición de origen (a) y de destino (b); d es la dirección del estallido.
+  const vs=`attribute vec3 a,b,d;attribute float r;uniform float t,time,ps;uniform mat4 M;varying float vr;
+  void main(){float e=smoothstep(0.,1.,clamp(t*1.5-r*.5,0.,1.));vec3 p=mix(a,b,e);
+    p+=d*sin(3.14159*e)*2.4*(.5+r*1.6);p+=.025*vec3(sin(time*1.1+r*40.),cos(time*1.3+r*30.),sin(time*.8+r*20.));
+    vec4 q=M*vec4(p,1.);gl_Position=q;gl_PointSize=ps*(.55+r*1.1)/q.w;vr=r;}`;
+  const fs=`precision mediump float;varying float vr;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
+    float a=pow(1.-d*2.,1.6);gl_FragColor=vec4(mix(vec3(.18,.48,1.),vec3(.62,.86,1.),vr)*a,a);}`;
+  const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);return o};
+  const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);
+  const buf=(name,data,n)=>{const o=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,o);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW);
+    const l=gl.getAttribLocation(pr,name);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,n,gl.FLOAT,false,0,0);return o};
+  const dd=new Float32Array(NP*3);for(let k=0;k<NP;k++)dd.set(unit(),k*3);
+  const bA=buf('a',shape('nebulosa'),3),bB=buf('b',shape('nebulosa'),3);buf('r',new Float32Array(NP).map(()=>rnd()),1);buf('d',dd,3);
+  const put=(o,n)=>{gl.bindBuffer(gl.ARRAY_BUFFER,o);gl.bufferData(gl.ARRAY_BUFFER,shape(n),gl.DYNAMIC_DRAW)};
+  const U=n=>gl.getUniformLocation(pr,n),uT=U('t'),uTime=U('time'),uPs=U('ps'),uM=U('M');
+  gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+
+  // Matrices 4x4 (orden de columnas, como espera WebGL).
+  const mul=(a,b)=>{const o=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s}return o};
+  const per=(f,as,n,fa)=>{const t=1/Math.tan(f/2);return new Float32Array([t/as,0,0,0,0,t,0,0,0,0,(fa+n)/(n-fa),-1,0,0,2*fa*n/(n-fa),0])};
+  const tr=(x,y,z)=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1]);
+  const rx=a=>{const c=Math.cos(a),s=Math.sin(a);return new Float32Array([1,0,0,0,0,c,s,0,0,-s,c,0,0,0,0,1])};
+  const ry=a=>{const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,-s,0,0,1,0,0,s,0,c,0,0,0,0,1])};
+  const sc=s=>new Float32Array([s,0,0,0,0,s,0,0,0,0,s,0,0,0,0,1]);
+
+  let A={sh:'nebulosa',px:1165,py:420,s:1},G={l:0,t:0,k:1},B=A,t=1,t0=0,spin=0,spF=0,spT=0,yaw=0,last=performance.now(),P=per(.8,16/9,.1,60);
+  const DUR=2100;
+  // Convierte el centro de la slide (px, py) a coordenadas 3D a la distancia de la cámara (7),
+  // según dónde quedó el escenario en la ventana (G). La escala acompaña al escenario.
+  const place=c=>{const tf=Math.tan(.4)*7,W=innerWidth,H=innerHeight;
+    return[((G.l+c.px*G.k)/W*2-1)*tf*W/H,(1-(G.t+c.py*G.k)/H*2)*tf,c.s*900*G.k/H]};
+  const resize=(l,t,k0)=>{if(k0)G={l,t,k:k0};const k=Math.min(2,devicePixelRatio||1);cv.width=Math.round(innerWidth*k);cv.height=Math.round(innerHeight*k);
+    gl.viewport(0,0,cv.width,cv.height);P=per(.8,cv.width/cv.height,.1,60)};
+  // Pasa al objeto c; dir = 1 avanza, -1 retrocede (la cámara gira en sentido contrario).
+  const to=(c,dir)=>{if(reduce){A=B=c;put(bA,c.sh);put(bB,c.sh);t=1;return}
+    A=B;B=c;put(bA,A.sh);put(bB,B.sh);t=0;t0=performance.now();spF=spin;spT=spin+dir*TAU};
+  const frame=now=>{const time=now/1000,dt=Math.min(.05,(now-last)/1000);last=now;
+    if(t<1)t=Math.min(1,(now-t0)/DUR);
+    const ez=t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;spin=spF+(spT-spF)*ez;
+    if(SPIN[B.sh])yaw+=dt*.22;
+    else{const m=Math.round(yaw/TAU)*TAU+Math.sin(time*.35)*.55;yaw+=(m-yaw)*Math.min(1,dt*1.5)}
+    const a=place(A),b=place(B),x=a[0]+(b[0]-a[0])*ez,y=a[1]+(b[1]-a[1])*ez,s=a[2]+(b[2]-a[2])*ez,z=-7-Math.sin(Math.PI*t)*2.5;
+    const M=mul(P,mul(tr(x,y,z),mul(rx(.3+Math.sin(time*.4)*.05),mul(ry(yaw+spin),sc(s)))));
+    gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform1f(uT,t);gl.uniform1f(uTime,time);gl.uniform1f(uPs,26*cv.height/900);gl.uniformMatrix4fv(uM,false,M);
+    gl.drawArrays(gl.POINTS,0,NP);requestAnimationFrame(frame)};
+  resize();requestAnimationFrame(frame);
+  return{to,resize};
+})();
+
+// Escala el escenario de 1600x900 a la pantalla, sin deformarlo.
+const fit=()=>{const W=innerWidth,H=innerHeight,k=Math.min(W/1600,H/900);
+  const l=Math.round((W-1600*k)/2),t=Math.round((H-900*k)/2);
+  stage.style.left=l+'px';stage.style.top=t+'px';stage.style.transform='scale('+k+')';Scene.resize(l,t,k)};
+addEventListener('resize',fit);document.addEventListener('fullscreenchange',()=>setTimeout(fit,60));fit();
+
+// Regla inferior: bloques del guion (el orador figura solo en las notas).
+const BL=[['Apertura','Hernán',0,0],['Build y publicación','Ezequiel',1,2],['Seguridad','Fabrizio',3,4],['Despliegue en AWS','Agustín',5,6],['Riesgos y cierre','Hernán',7,10]];
+const pos=i=>i/(S.length-1)*100;
+$('rt').innerHTML=S.map((s,i)=>'<span class="tk'+(BL.some(b=>b[2]===i)?' mj':'')+'" style="left:'+pos(i)+'%"></span>').join('')+
+  BL.map((b,j)=>'<span class="blk" data-j="'+j+'" style="left:'+pos(b[2])+'%">'+b[0]+'</span>').join('');
+
+// Contadores animados (data-from → data-to).
+const fmt=n=>Math.round(n).toLocaleString('es-AR');
+function countUp(el0){
+  raf.forEach(cancelAnimationFrame);raf=[];
+  el0.querySelectorAll('[data-to]').forEach(el=>{
+    const a=+el.dataset.from,b=+el.dataset.to,dur=reduce?1:1400,delay=reduce?0:1750;let t0=null;
+    el.textContent=fmt(a);
+    const step=t=>{if(!t0)t0=t;const p=Math.min(1,Math.max(0,(t-t0-delay)/dur)),e=1-(1-p)**3;el.textContent=fmt(a+(b-a)*e);if(p<1)raf.push(requestAnimationFrame(step))};
+    raf.push(requestAnimationFrame(step));
+  });
+}
+
+function show(n){
+  n=Math.max(0,Math.min(S.length-1,n));if(n===cur)return;
+  S.forEach((s,k)=>{s.classList.toggle('on',k===n);s.classList.toggle('past',k<n)});
+  Scene.to(SC[n],n<cur?-1:1);
+  document.body.classList.add('moving');clearTimeout(mv);mv=setTimeout(()=>document.body.classList.remove('moving'),reduce?0:1900);
+  cur=n;const s=S[n];
+  document.body.dataset.v=s.dataset.v;
+  $('ptr').style.left=pos(n)+'%';
+  $('rnum').textContent=String(n+1).padStart(2,'0')+' / '+String(S.length).padStart(2,'0');
+  document.querySelectorAll('#rt .blk').forEach(b=>{const B=BL[b.dataset.j];b.classList.toggle('cur',n>=B[2]&&n<=B[3])});
+  countUp(s);
+  const d=s.dataset.n.split('|');$('notes').innerHTML='<h5>'+d[0]+'</h5>'+d.slice(1).map(x=>'<p>'+x+'</p>').join('');
+  try{history.replaceState(null,'','#slide-'+(n+1))}catch(e){}
+}
+const fromHash=()=>{const m=location.hash.match(/slide-(\d+)/);return m?+m[1]-1:0};
+addEventListener('hashchange',()=>show(fromHash()));
+
+// Notas del orador (N) y pantalla completa (F), solo por teclado.
+const toggleNotes=()=>$('notes').classList.toggle('show');
+const full=()=>{try{document.fullscreenElement?document.exitFullscreen():root.requestFullscreen().catch(()=>{})}catch(e){}};
+
+addEventListener('keydown',e=>{
+  if(e.target.closest&&e.target.closest('button')&&(e.key===' '||e.key==='Enter'))return;
+  const k=e.key;
+  if(['ArrowRight','PageDown',' ','Enter'].includes(k)){e.preventDefault();show(cur+1)}
+  else if(['ArrowLeft','PageUp','Backspace'].includes(k)){e.preventDefault();show(cur-1)}
+  else if(k==='Home')show(0);else if(k==='End')show(S.length-1);
+  else if(k==='n'||k==='N')toggleNotes();else if(k==='f'||k==='F')full();
+});
+let sx=null;
+addEventListener('touchstart',e=>{sx=e.touches[0].clientX},{passive:true});
+addEventListener('touchend',e=>{if(sx===null)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>50)show(cur+(dx<0?1:-1));sx=null});
+stage.addEventListener('click',e=>{if(!e.target.closest('button'))show(cur+(e.clientX>innerWidth/2?1:-1))});
+
+// Inclinación 3D suave de las tarjetas al pasar el mouse.
+let tl=null;const untilt=el=>{if(el)el.style.rotate=''};
+if(!reduce){
+  stage.addEventListener('pointermove',e=>{const el=e.target.closest('.card');if(tl!==el){untilt(tl);tl=el}if(!el)return;
+    const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;
+    el.style.rotate=(-y).toFixed(3)+' '+x.toFixed(3)+' 0 '+(Math.hypot(x,y)*10).toFixed(2)+'deg'});
+  stage.addEventListener('pointerleave',()=>{untilt(tl);tl=null});
+}
+setTimeout(()=>{$('help').style.opacity=0},6000);
+show(fromHash());
+}
+</script>
+</body>
+</html>
