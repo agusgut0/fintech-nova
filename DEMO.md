@@ -80,7 +80,7 @@ Se presenta en este orden: el repositorio (este archivo y el [README](./README.m
 ## Checklist antes de la demo
 
 - [ ] Ensayo cronometrado completo (menos de 10 minutos).
-- [ ] Sesión del sandbox iniciada, credenciales actualizadas y `infra-apply` ejecutado al menos 15 minutos antes.
+- [ ] Sesión del sandbox iniciada, credenciales actualizadas y `infra-apply` ejecutado al menos 15 minutos antes, con el botón del **job**, no el de la etapa (ese también ejecuta `infra-destroy`).
 - [ ] Pipeline completo de `main` en verde, abierto en una pestaña.
 - [ ] Aplicación abierta en otra pestaña, con el certificado ya aceptado.
 - [ ] Un reporte de escaneo descargado, por si GitLab responde lento.

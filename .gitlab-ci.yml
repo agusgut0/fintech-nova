@@ -349,6 +349,9 @@ publish-image:
   stage: publish
   tags: [$RUNNER_TAG]
   image: docker:27.5.1-cli    # usa el Docker del runner, igual que build-image
+  # No usa los reportes de los jobs anteriores: sin esto descargaba los artifacts de todos
+  # (unos 14 s por job, en cada uno de los 7)
+  dependencies: []
   parallel:
     matrix:
       - SERVICE:

@@ -28,6 +28,7 @@ En cumplimiento del principio de **cero secretos hardcodeados**, ninguna contras
 Para aprovisionar los secretos en la instancia EC2 sin subirlos al repositorio:
 * El script de automatización [`deploy.sh`](./deploy.sh) copia los archivos `.env` directamente desde la estación de trabajo local hacia los directorios de cada servicio en la instancia (`/home/ec2-user/aplicaciones-contenedores/<servicio>/.env`) a través de **`scp` sobre un túnel SSH cifrado**, autenticado mediante par de claves RSA (`fintech-key.pem` con permisos restrictivos `chmod 400`).
 * Adicionalmente, durante el despliegue remoto se ejecuta `sed -i 's/\r$//' */.env` para asegurar que los archivos transferidos desde entornos Windows mantengan formato POSIX (`LF`) sin corromper las credenciales leídas por los contenedores en Linux.
+* **Parte 2:** los `.env` ya no salen de la PC de un integrante. Se guardan como variables de CI/CD de tipo *File*, protegidas, y el job `deploy` los copia a la EC2 por `scp`, con la misma limpieza de `CRLF`. Detalle en la §5.
 
 ### D. Principio de Menor Privilegio en Base de Datos
 * Aunque los 5 microservicios comparten una única instancia de MariaDB (`db`), **ninguna API utiliza el usuario administrativo `root`**.
@@ -61,6 +62,7 @@ Se tomó la decisión consciente de **generar el certificado y su clave privada 
      - ./certs:/etc/nginx/certs:ro
    ```
    De esta forma, incluso ante una eventual vulnerabilidad en el proceso de NGINX, el contenedor no posee permisos de escritura para adulterar ni sobrescribir los certificados del host.
+4. **Parte 2:** el mismo criterio se mantiene, pero el certificado lo genera el job `deploy` en la EC2 (con el *Common Name* de la IP de la sesión) en lugar de `deploy.sh`, solo si todavía no existe.
 
 ---
 
@@ -89,7 +91,7 @@ Se utilizaron exclusivamente imágenes base oficiales verificadas y variantes m�
 * **Cero exposición directa de Backend y Persistencia:** Ni `db` (`3306`) ni las 5 APIs (`8080`) poseen bloque `ports:` en `docker-compose.yml`. Son inaccesibles desde Internet y desde redes externas al motor de Docker.
 * **Único punto de entrada cifrado (`8443/tcp`):** Solo el proxy inverso `web` publica el puerto `8443:8443` con SSL/TLS activo. **El puerto `80` (HTTP sin cifrar) permanece cerrado** tanto en la configuración de NGINX como en el Security Group de AWS EC2.
 * **Security Group de AWS EC2 bajo principio de mínimo acceso:**
-  * Tráfico administrativo SSH (`22/tcp`) restringido exclusivamente a la IP pública de administración (`/32`).
+  * Tráfico administrativo SSH (`22/tcp`) restringido exclusivamente a la IP pública de administración (`/32`). En la Parte 2, solo a la IP de salida del runner, calculada en cada corrida (§5.3).
   * Tráfico de aplicación restringido únicamente al puerto HTTPS `8443/tcp`.
 
 ### D. D07: Protección contra Agotamiento de Recursos (*Resource Limits & DoS Prevention*)
@@ -211,7 +213,7 @@ Un riesgo aceptado de Trivy se registra agregando una entrada `imagen:CVE` a la 
 
 ### 4.5 Dónde ver los resultados
 
-Cada ejecución del pipeline deja los reportes como artifacts de los jobs `secret-scan`, `sast`, `dockerfile-lint`, `dependency-scan` e `image-scan` (un reporte por imagen, `trivy-<servicio>.json` y `.txt`, que contiene las vulnerabilidades con parche). Los problemas que tuvimos con el pipeline y cómo se resolvieron están en [`ERRORES.md`](./ERRORES.md), errores 31 a 39.
+Cada ejecución del pipeline deja los reportes como artifacts de los jobs `secret-scan`, `sast`, `dockerfile-lint`, `shell-lint`, `code-lint`, `compose-validate`, `dependency-scan` e `image-scan` (un reporte por imagen, `trivy-<servicio>.json` y `.txt`, que contiene las vulnerabilidades con parche). Los problemas que tuvimos con el pipeline y cómo se resolvieron están en [`ERRORES.md`](./ERRORES.md), errores 31 a 47.
 
 ---
 

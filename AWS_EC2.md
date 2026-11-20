@@ -154,7 +154,7 @@ El **estado** de Terraform se guarda en GitLab (Operate → Terraform states) y 
 1. En AWS Academy, iniciar el lab y esperar a que el indicador quede en verde.
 2. Abrir **AWS Details → AWS CLI → Show** y copiar los tres valores.
 3. En GitLab (Settings → CI/CD → Variables), actualizar `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`.
-4. En el último pipeline de `main` (Build → Pipelines), ejecutar ▶ en `infra-apply`.
+4. En el último pipeline de `main` (Build → Pipelines), ejecutar ▶ en el job `infra-apply`. **No usar el botón de la etapa `infra`**: ejecuta también `infra-destroy` y borra la instancia apenas termina el despliegue ([ERRORES.md](./ERRORES.md), error 46).
 5. `deploy` y `verify-deployment` corren solos. La URL de la aplicación queda en Operate → Environments → `production`.
 6. Opcional: al terminar, ejecutar ▶ en `infra-destroy` para borrar la infraestructura antes de que venza la sesión.
 
@@ -174,22 +174,27 @@ La tabla completa de variables está en [`PIPELINE.md`](./PIPELINE.md#configurac
 
 ## 9. Evidencia de la primera sesión (configuración manual)
 
-Antes de automatizar la infraestructura, la primera instancia de la Parte 2 se creó a mano para validar el procedimiento que después se trasladó a Terraform.
+Antes de automatizar la infraestructura, la primera instancia de la Parte 2 se creó a mano para validar el procedimiento que después se trasladó a Terraform. En esa sesión se comprobó:
 
-Instancia recién creada, sin Docker (el pipeline la prepara desde cero):
+- Que el pipeline prepara la instancia desde cero: la instancia recién creada no tenía Docker.
+- Que las reglas de entrada del Security Group eran las previstas: `22` restringido, `8443` público, sin `80` ni `3306`.
+- Que la clave `ssh-ed25519` publicada en el registro del sistema de la instancia coincidía con la que la instancia presenta por la red (`ssh-keyscan`). Es el mismo control que `infra-apply` ahora realiza automáticamente por la API de AWS.
 
-![Instancia sin Docker](./img-parte2/a.png)
+La evidencia de la última sesión, con el pipeline completo, está en el [README §8](./README.md#-8-evidencia).
 
-Resumen de la instancia:
+## 10. Última sesión con el pipeline completo
 
-![Resumen de la instancia EC2](./img-parte2/resumen-instancia-EC2.png)
+Sesión del sandbox del 19 y 20/11/2026. Pipeline **#17424** de `main` (commit `072d47d6`, merge de la parte de validación y hardening). Toda la infraestructura la creó `infra-apply` con Terraform; no se tocó la consola de AWS.
 
-Reglas de entrada del Security Group (22 restringido, 8443 público, sin 80 ni 3306):
+| Dato | Valor |
+|---|---|
+| Instancia | `i-088fc20bf1cd0f322`, `t3.medium`, Amazon Linux 2023 |
+| IP pública | `3.84.215.156` |
+| URL de la aplicación | `https://3.84.215.156:8443` |
+| Security Group | `fintech-nova-grupo6-sg`. Entrada: `22` solo desde la IP de salida del runner (`200.10.191.20/32`) y `8443` desde `0.0.0.0/0`. Sin reglas para `80` ni `3306`. |
+| Llave SSH | `fintech-nova-grupo6-deploy` (ed25519, llave propia del deploy) |
+| Disco | gp3 de 8 GiB, cifrado |
+| Metadatos de la instancia | IMDSv2 obligatorio |
+| Resultado | `deploy` levantó los 7 contenedores con el compose endurecido y `verify-deployment` obtuvo HTTP 200 en la web y las 5 APIs, con el puerto 80 cerrado. |
 
-![Reglas de entrada del Security Group](./img-parte2/reglas-entrada-sg.png)
-
-Verificación de la identidad de la instancia: la clave `ssh-ed25519` del registro del sistema coincide con la que presenta la instancia por la red. Es el mismo control que `infra-apply` ahora realiza automáticamente por la API de AWS.
-
-![Clave del host en el registro del sistema](./img-parte2/evidencia-know_hosts.png)
-
-![Clave del host por la red (ssh-keyscan)](./img-parte2/ssh-keyscan.png)
+En esa misma sesión, una ejecución anterior del mismo pipeline (instancia `i-0f15d81e9da241c92`, IP `3.87.120.0`) también completó `deploy` y `verify`, y después se destruyó con `infra-destroy` ([ERRORES.md](./ERRORES.md), error 46). La segunda ejecución de `infra-apply` volvió a crear los 6 recursos desde cero, lo que confirma que la infraestructura se puede recrear sin pasos manuales.

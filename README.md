@@ -22,7 +22,7 @@
 
 Enunciados: [Parte 1](./Enunciado-TP-Parte-1.md) | [Parte 2](./Enunciado-TP-Parte-2.md)
 Documentación: [PIPELINE.md](./PIPELINE.md) | [SEGURIDAD.md](./SEGURIDAD.md) | [AWS_EC2.md](./AWS_EC2.md) | [ERRORES.md](./ERRORES.md) | [DEMO.md](./DEMO.md) (Sprint Demo)
-Imágenes: [Container Registry del proyecto (labsys)](https://labsys.frc.utn.edu.ar/gitlab/desarrollo-y-operaciones-devops/tps-2026/grupo-06/tp-grupo6/container_registry) | [Docker Hub `devopsgrupo6`](https://hub.docker.com/u/devopsgrupo6)
+Imágenes: registry del labsys (provisto por la cátedra; [evidencia de publicación](#3-publicación-la-misma-imagen-en-los-dos-registries)) | [Docker Hub `devopsgrupo6`](https://hub.docker.com/u/devopsgrupo6)
 
 [Arquitectura](#️-2-arquitectura) • [Pipeline](#-3-pipeline-de-cicd) • [Servicios](#-4-catálogo-de-servicios) • [Hardening](#️-5-decisiones-de-diseño-y-hardening) • [Mejoras](#-6-mejoras-respecto-de-la-parte-1) • [Despliegue](#-7-despliegue-y-pruebas) • [Evidencia](#-8-evidencia) • [Para pensar](#-9-para-pensar--responder)
 
@@ -69,7 +69,8 @@ flowchart LR
     class AWS,EC2 aws;
 ```
 
-- El **registry del labsys** guarda las imágenes candidatas mientras se escanean. La EC2 no puede acceder a él porque solo existe dentro de la red de la facultad ([ERRORES.md](./ERRORES.md), error 39), así que `publish` sube a **Docker Hub** únicamente las imágenes que pasaron los controles. Una imagen con fallas no sale nunca del registry interno.
+- El **registry del labsys** guarda las imágenes candidatas mientras se escanean. La EC2 no puede acceder a él porque solo existe dentro de la red de la facultad ([ERRORES.md](./ERRORES.md), error 39), así que `publish` sube a **Docker Hub** únicamente las imágenes que pasaron los controles. Una imagen con fallas no sale nunca del registry interno. Usar Docker Hub para el despliegue en la EC2 fue una opción acordada con la cátedra; la alternativa era desplegar en el servidor del labsys en lugar de AWS.
+- El registry del labsys lo provee la cátedra: el pipeline lo recibe en la variable `CI_REGISTRY`, que está enmascarada, y el proyecto no tiene vista web del registry ([ERRORES.md](./ERRORES.md), error 47). La publicación se comprueba en el log de `publish-image`, donde la imagen tiene el mismo digest en los dos registries ([§8](#3-publicación-la-misma-imagen-en-los-dos-registries)).
 - La EC2 se crea en cada sesión del sandbox con Terraform ([`infra/`](./infra/)). El procedimiento está en [AWS_EC2.md](./AWS_EC2.md).
 
 ### B. Topología de la aplicación dentro de la EC2
@@ -310,7 +311,7 @@ Analizadas y no implementadas en esta entrega, en orden de prioridad:
 Al iniciar cada sesión del sandbox:
 
 1. Actualizar en GitLab las tres variables `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`.
-2. En el último pipeline de `main`, ejecutar ▶ `infra-apply`. `deploy` y `verify-deployment` corren solos.
+2. En el último pipeline de `main`, ejecutar ▶ en el job `infra-apply` (no el botón de la etapa, que también ejecuta `infra-destroy`). `deploy` y `verify-deployment` corren solos.
 3. La URL de la aplicación queda en GitLab, en **Operate → Environments → production**.
 
 Procedimiento completo y configuración inicial: [AWS_EC2.md](./AWS_EC2.md). Variables: [PIPELINE.md](./PIPELINE.md#configuración-necesaria-en-gitlab).
@@ -358,17 +359,43 @@ Desde el navegador: `https://<HOST>:8443`, aceptando la advertencia del certific
 
 ### A. Parte 2: pipeline y aplicación en AWS
 
-<!-- Capturas de la sesión final del sandbox (todas de la misma sesión):
-     1. Pipeline completo en verde (vista de stages).
-     2. Jobs de image-scan en paralelo y sus artifacts.
-     3. Log de verify-deployment con los 6 endpoints en 200 y el puerto 80 cerrado.
-     4. Operate → Environments → production con la URL.
-     5. Container Registry del labsys con las etiquetas por SHA.
-     6. Aplicación funcionando en https://<IP>:8443 (portada y un ABM). -->
+Todas las capturas son de la misma sesión del sandbox (19 y 20/11/2026), con el pipeline **#17424** de `main` (commit `072d47d6`). Datos de la instancia en [AWS_EC2.md §10](./AWS_EC2.md#10-última-sesión-con-el-pipeline-completo).
 
-*Las capturas se toman en la sesión final del sandbox, todas en la misma sesión.*
+#### 1. Pipeline completo
+Las 7 etapas en verde. El estado *Warning* corresponde solo a `code-lint`, que informa hallazgos de estilo sin cortar.
 
-Evidencia de la configuración de la instancia y del Security Group: [AWS_EC2.md §9](./AWS_EC2.md#9-evidencia-de-la-primera-sesión-configuración-manual).
+![Pipeline #17424 completo en main](./img-parte2/pipeline-main.png)
+
+#### 2. Escaneo de las 7 imágenes en paralelo
+Cada imagen se escanea en su propio job, al mismo tiempo, y deja su reporte como artifact.
+
+![Jobs de image-scan en paralelo](./img-parte2/pipeline-image-scan.png)
+
+#### 3. Publicación: la misma imagen en los dos registries
+`publish-image` re-etiqueta la imagen aprobada en el registry del labsys y la sube a Docker Hub. El digest `sha256:40a3788d…` es el mismo en los dos: producción recibe exactamente la imagen que se escaneó.
+
+![Push al registry del labsys y a Docker Hub](./img-parte2/registry.png)
+
+#### 4. Verificación automática del despliegue
+La web y las 5 APIs responden HTTP 200 por HTTPS, y el puerto 80 está cerrado.
+
+![Log de verify-deployment](./img-parte2/verify-log.png)
+
+#### 5. Entorno `production` en GitLab
+Último despliegue exitoso del commit `072d47d6`, con el enlace a la aplicación (*Open*).
+
+![Operate → Environments → production](./img-parte2/environment-production.png)
+
+#### 6. Aplicación funcionando en AWS
+Panel de FinTech Nova en `https://3.84.215.156:8443`, la IP pública de la EC2 de esa sesión.
+
+![Portada de FinTech Nova en la EC2](./img-parte2/app-portada.png)
+
+ABM de pagos: el pago nuevo (id 3) tiene su monto convertido a USD por el servicio externo. Los pagos 1 y 2 son datos iniciales de la base, cargados sin conversión.
+
+![ABM de pagos con monto en USD](./img-parte2/app-abm.png)
+
+Validaciones de la primera sesión manual, antes de automatizar con Terraform: [AWS_EC2.md §9](./AWS_EC2.md#9-evidencia-de-la-primera-sesión-configuración-manual).
 
 ### B. Parte 1: despliegue manual con `deploy.sh`
 
@@ -411,7 +438,7 @@ La regla está automatizada: el pipeline corta solo ante vulnerabilidades críti
 
 ### 3. ¿Qué parte del pipeline ahorra más tiempo gracias a la ejecución en paralelo?
 
-El **build y el escaneo de las 7 imágenes**. Cada servicio se construye y se escanea en su propio job al mismo tiempo, así que la etapa dura lo que tarda la imagen más lenta (`api-facturas`, que compila con Maven) y no la suma de las siete. Además, los análisis que solo leen el código (secretos, SAST y dependencias) corren mientras se construyen las imágenes, en lugar de esperar a que termine el build.
+El **escaneo de las 7 imágenes**, y después el build. En el pipeline #17424, cada escaneo tardó entre 6,5 y 8,5 minutos. Uno detrás del otro sumarían **unos 48 minutos**; en paralelo, la etapa dura lo que tarda el más lento (`api-facturas`, 8 min 37 s). Es decir, **unos 40 minutos menos por despliegue**, sobre un pipeline completo que hoy tarda unos 23 minutos. El build sigue la misma lógica: las 7 imágenes se construyen al mismo tiempo. Además, los análisis que solo leen el código (secretos, SAST y dependencias) y los linters de los 5 lenguajes corren mientras se construyen las imágenes, en lugar de esperar a que termine el build.
 
 ### 4. Si la aplicación estuviera caída una hora, ¿qué impacto tendría y qué lo mitiga?
 
