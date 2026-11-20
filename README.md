@@ -122,6 +122,7 @@ flowchart LR
         CV["compose-validate<br/>esquema + reglas del TP"]
         HL["dockerfile-lint 🛡️<br/>Hadolint"]
         SC["shell-lint<br/>ShellCheck"]
+        CL["code-lint × 5 lenguajes<br/>(solo informa)"]
         TV["terraform-validate"]
     end
 
@@ -167,7 +168,7 @@ flowchart LR
 
 | Stage | Jobs | Paralelismo | Para qué |
 |---|---|---|---|
-| `validate` | `yaml-lint`, `compose-validate`, `dockerfile-lint`, `shell-lint`, `terraform-validate` | Los 5 a la vez | Frenar errores de sintaxis y malas prácticas antes de gastar tiempo en el build. `compose-validate` además rechaza un compose que publique puertos fuera de `web:8443` o que no tenga `restart: always` y límites de recursos en todos los servicios. |
+| `validate` | `yaml-lint`, `compose-validate`, `dockerfile-lint`, `shell-lint`, `terraform-validate`, `code-lint` × 5 | Todos a la vez; `code-lint` con `parallel: matrix`, un job por lenguaje | Frenar errores de sintaxis y malas prácticas antes de gastar tiempo en el build. `compose-validate` además rechaza un compose que publique puertos fuera de `web:8443` o que no tenga `restart: always` y límites de recursos en todos los servicios. |
 | `security` (código) | `secret-scan`, `sast`, `dependency-scan` | Los 3 a la vez, **en paralelo con validate y build** (`needs: []`) | No necesitan imágenes: analizan el repositorio desde el primer segundo. |
 | `build` | `build-image` × 7 | `parallel: matrix`, un job por servicio | Construir las 7 imágenes y subirlas como candidatas (`<servicio>:<SHA>-candidate`). |
 | `security` (imágenes) | `image-scan` × 7 | `parallel: matrix` | Buscar vulnerabilidades en cada imagen construida. |
@@ -193,6 +194,7 @@ flowchart LR
 | Dockerfiles (Hadolint) | Hay errores o el último `USER` es root. |
 | Compose (`compose-validate`) | Un servicio distinto de `web` publica puertos, `web` publica otro que no sea `8443`, o falta `restart: always` o los límites. |
 | Scripts (ShellCheck) | Hay advertencias o errores. |
+| Código (`code-lint`) | No corta: informa los hallazgos de estilo del código de las APIs y del frontend. |
 | Imágenes (Trivy) | Hay una vulnerabilidad `CRITICAL` **con parche disponible**. |
 | Dependencias (Trivy fs) | No corta: informa `HIGH` y `CRITICAL` como advertencia. |
 

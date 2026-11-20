@@ -119,6 +119,35 @@ shell-lint:
       - shellcheck-report.json
       - scripts.txt
 
+code-lint:
+  # Linting del codigo de las APIs y del frontend: un job por lenguaje, en paralelo, cada uno
+  # con la misma imagen base que usa su Dockerfile. La logica esta en ci/code-lint.sh.
+  # SOLO INFORMA (allow_failure): el codigo es de la catedra y los hallazgos son de estilo;
+  # las vulnerabilidades del codigo las corta Semgrep (job "sast").
+  stage: validate
+  tags: [$RUNNER_TAG]
+  image: $LINT_IMAGE
+  allow_failure: true
+  parallel:
+    matrix:
+      - LINT_LANG: python
+        LINT_IMAGE: python:3.12-alpine
+      - LINT_LANG: javascript
+        LINT_IMAGE: node:22-alpine3.21
+      - LINT_LANG: go
+        LINT_IMAGE: golang:1.25
+      - LINT_LANG: java
+        LINT_IMAGE: maven:3.9.6-eclipse-temurin-21-alpine
+      - LINT_LANG: csharp
+        LINT_IMAGE: mcr.microsoft.com/dotnet/sdk:8.0
+  script:
+    - sh ci/code-lint.sh "$LINT_LANG"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - "lint-$LINT_LANG.txt"
+
 # Base comun de los jobs de Terraform (los jobs la reutilizan con "extends")
 .terraform-base:
   tags: [$RUNNER_TAG]

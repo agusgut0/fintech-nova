@@ -23,7 +23,9 @@ flowchart LR
   Compose contra su esquema y comprueba las reglas del stack sobre el archivo resuelto: solo `web`
   publica un puerto, y es el `8443`; todos los servicios tienen `restart: always` y límites de CPU
   y memoria. Hadolint revisa los Dockerfiles; ShellCheck (`shell-lint`) revisa los scripts de
-  shell; `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
+  shell; `code-lint` analiza el código de las APIs y del frontend con un linter por lenguaje
+  (Ruff, ESLint, `go vet` y `gofmt`, Checkstyle y `dotnet format`), cinco jobs en paralelo que
+  solo informan; `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
   credenciales de AWS.
 - **build:** construye las siete imágenes (`db`, `api-clientes`, `api-pagos`, `api-facturas`,
   `api-transacciones`, `api-tarjetas` y `web`) en paralelo. Las sube al registry con una etiqueta
