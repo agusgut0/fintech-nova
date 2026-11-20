@@ -81,7 +81,7 @@ Ningún contenedor de la plataforma ejecuta su proceso principal como `root` en 
 
 ### B. D02 y D03: *Multistage Builds* y Reducción de Superficie de Ataque (*Patch Management & Base Images*)
 Se utilizaron exclusivamente imágenes base oficiales verificadas y variantes mínimas (`alpine`, `slim`, `jre-alpine`, `aspnet`, `ubi9`) combinadas con **compilación multietapa (*Multistage Builds*)** en los 6 servicios de aplicación:
-* **Eliminación de herramientas de compilación en producción:** Los SDKs completos (`maven:3.9.6-eclipse-temurin-21-alpine`, `golang:1.22`, `mcr.microsoft.com/dotnet/sdk:8.0`, `node:20-alpine`) quedan descartados en la etapa `builder`.
+* **Eliminación de herramientas de compilación en producción:** Los SDKs completos (`maven:3.9.6-eclipse-temurin-21-alpine`, `golang:1.25`, `mcr.microsoft.com/dotnet/sdk:8.0`, `node:20-alpine`) quedan descartados en la etapa `builder`.
 * Las imágenes finales de *runtime* solo contienen el artefacto compilado (`.jar`, binario estático de Go, DLLs publicadas de .NET, estáticos HTML/CSS/JS de Vite o entorno virtual `/opt/venv` de Python), reduciendo drásticamente el tamaño de las imágenes y eliminando compiladores, gestores de paquetes (`mvn`, `npm`, `go`) y librerías de desarrollo que un atacante podría explotar en una intrusión (*Living off the Land*).
 
 ### C. D04 y D05: Segmentación de Red y Cierre de Puertos Inseguros (*Network Segmentation & Firewalling*)
@@ -106,6 +106,30 @@ Para evitar que una fuga de memoria (*memory leak*), un pico de tráfico o el ar
 | **`web`** | `0.30` vCPU | `256M` | `depends_on: api-facturas (service_healthy)` + resto `service_started` |
 | **Total Máximo de RAM** | — | **2048 MB (2.0 GiB)** | Deja **2.0 GiB libres** para el kernel de Amazon Linux 2023 y el demonio de Docker. |
 
+**Rotación de logs (Parte 2):** cada servicio guarda como máximo 3 archivos de log de 10 MB (`logging: max-size / max-file`). El disco de la EC2 es de 8 GiB y, sin límite, los logs de los contenedores crecen hasta llenarlo y dejar la plataforma sin servicio.
+
+### E. Hardening del contenedor en ejecución (Parte 2)
+
+El usuario no-root (apartado A) asume que un atacante puede entrar a un contenedor. Estas tres medidas, alineadas con el CIS Docker Benchmark, limitan lo que puede hacer una vez adentro. Se definen una sola vez en el compose (ancla `x-hardening`) y se aplican a los 7 servicios:
+
+| Medida | Qué impide | Por qué no rompe nada |
+|---|---|---|
+| `cap_drop: [ALL]` | Usar capacidades del kernel (cambiar dueños de archivos, abrir sockets crudos, etc.), incluso si el proceso llegara a ser root. | Todos los servicios corren sin root y escuchan en puertos mayores a 1024: no necesitan ninguna. |
+| `security_opt: no-new-privileges:true` | Ganar privilegios ejecutando un binario `setuid`. | Ningún servicio cambia de usuario al arrancar. |
+| `read_only: true` | Modificar el sistema de archivos del contenedor: instalar herramientas, alterar el código o dejar un programa persistente. | Lo que cada servicio necesita escribir se declara explícitamente: `/tmp` en memoria (`tmpfs`) para todos; el socket de MariaDB (`/run/mariadb`) y sus datos (volumen `db_data`); la caché y el pid de NGINX (`/var/cache/nginx` y `/run`, montados con dueño `nginx`). |
+
+Se verificó con el smoke test (los 6 endpoints en 200), con un alta y una baja de un cliente para confirmar la escritura en la base, y con `docker inspect` en los 7 contenedores. El job `compose-validate` exige las tres medidas y la rotación de logs en todos los servicios: si un cambio futuro las quita, el pipeline falla.
+
+### F. Endurecimiento del proxy NGINX (Parte 2)
+
+Como `web` es la única puerta de entrada, concentra los controles que aplican a todo el tráfico:
+
+* **TLS 1.2 y 1.3 únicamente:** las versiones 1.0 y 1.1 están deprecadas y se rechazan.
+* **Headers de seguridad en todas las respuestas:** `Strict-Transport-Security` (el navegador usa siempre HTTPS), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` (impide mostrar el panel dentro de otro sitio), `Referrer-Policy: no-referrer` y `Content-Security-Policy` (el panel solo carga recursos propios y no se puede incrustar).
+* **Límite de peticiones a las APIs:** 10 por segundo por IP, con margen para ráfagas cortas. Al superarlo, NGINX responde `429 Too Many Requests` sin llegar a la API. Frena intentos de fuerza bruta y el abuso de las APIs, que en una fintech son el principal objetivo.
+
+Verificado en local: los 5 headers presentes, una conexión TLS 1.1 rechazada y, con 60 peticiones seguidas a una API, 48 respondidas y 12 con `429`.
+
 ---
 
 ## 4. Seguridad integrada en el pipeline (Parte 2)
@@ -120,7 +144,7 @@ Desde la Parte 2 los controles de seguridad no son un paso manual: se ejecutan a
 | Análisis estático (SAST) | Semgrep | `sast` | Cubre los cinco lenguajes del proyecto (Python, Java, JavaScript, Go y C#) con un único conjunto de reglas y permite filtrar por severidad, lo que hace posible nuestra política de corte. |
 | Buenas prácticas en Dockerfiles | Hadolint | `dockerfile-lint` | Verifica usuario no-root, uso de WORKDIR, pinning y capas. Corre en el stage `validate`, antes del build, para fallar rápido. |
 | Vulnerabilidades en imágenes | Trivy | `image-scan` | Analiza las siete imágenes construidas (sistema operativo y dependencias del binario) en paralelo, una por job. Cada imagen se descarga del registry **una sola vez**: el escaneo genera un reporte JSON y de ese mismo archivo salen la tabla del log y la regla de corte (`trivy convert`), sin volver a consultar el registry. |
-| Linting de configuración y scripts | yamllint, Docker Compose y ShellCheck | `yaml-lint`, `compose-validate`, `shell-lint` | `compose-validate` convierte los requisitos de exposición del stack en un control automático: el pipeline falla si un servicio que no es `web` publica un puerto, si `web` publica otro que no sea `8443` (por ejemplo, el `80`), o si falta `restart: always` o los límites de recursos. ShellCheck revisa `00-databases.sh`, que corre con privilegios dentro de la base. |
+| Linting de configuración y scripts | yamllint, Docker Compose y ShellCheck | `yaml-lint`, `compose-validate`, `shell-lint` | `compose-validate` convierte los requisitos del stack en un control automático: el pipeline falla si un servicio que no es `web` publica un puerto, si `web` publica otro que no sea `8443` (por ejemplo, el `80`), o si en algún servicio falta `restart: always`, los límites de recursos, el hardening (§3.E) o la rotación de logs. ShellCheck revisa `00-databases.sh`, que corre con privilegios dentro de la base. |
 | Linting de código | Ruff (Python), ESLint (JavaScript), `go vet` y `gofmt` (Go), Checkstyle (Java), `dotnet format` (C#) | `code-lint` (un job por lenguaje, en paralelo) | Cada linter es el estándar de su lenguaje y corre en la misma imagen base que usa el Dockerfile del servicio. **Solo informa:** el código es de la cátedra y los hallazgos son de estilo (por ejemplo, Checkstyle sigue la guía de Google, que pide una sangría distinta de la del código). Los problemas de seguridad del código los corta Semgrep. |
 | Dependencias e infraestructura como código | Trivy (modo sistema de archivos) | `dependency-scan` | Suma un análisis de las dependencias declaradas (`requirements.txt`, `package-lock.json`, `go.sum`, `pom.xml`) y de la configuración de los Dockerfiles, sin construir nada. |
 
@@ -138,7 +162,7 @@ La decisión es **cortar solo lo que tiene una solución accionable hoy** y deja
 | SAST | Hay hallazgos de severidad `ERROR`. | `WARNING` e `INFO`. |
 | Dockerfiles | Hay errores, o el último `USER` es root. | Advertencias y sugerencias. |
 | Código (linting) | — (el job queda en estado de advertencia). | Hallazgos de estilo y errores probables de los 5 lenguajes. |
-| Compose y scripts | El compose no cumple el esquema o las reglas de exposición, reinicio y límites; ShellCheck encuentra advertencias o errores. | Sugerencias de estilo de ShellCheck y advertencias de formato de yamllint. |
+| Compose y scripts | El compose no cumple el esquema o las reglas de exposición, reinicio, límites, hardening y logs; ShellCheck encuentra advertencias o errores. | Sugerencias de estilo de ShellCheck y advertencias de formato de yamllint. |
 | Imágenes | Hay una vulnerabilidad `CRITICAL` **con parche disponible**. | Las de severidad menor con parche (`HIGH`, `MEDIUM`, `LOW`), que quedan en el reporte. |
 | Dependencias e infraestructura | — (el job queda en estado de advertencia). | `HIGH` y `CRITICAL`. |
 

@@ -36,6 +36,7 @@ Se presenta en este orden: el repositorio (este archivo y el [README](./README.m
 - Presentar cada herramienta con su rol en una frase: secretos en el historial, análisis del código, buenas prácticas de los Dockerfiles, vulnerabilidades de las imágenes y de las dependencias, y validación de la configuración.
 - **Qué encontramos:** 13 vulnerabilidades críticas que ya estaban en las imágenes de la Parte 1 sin que lo supiéramos, en el servidor web embebido de la API de facturas, en librerías del sistema de la imagen del frontend, en la API de transacciones y en la de clientes. Todas corregidas.
 - **Política:** se corta lo que tiene solución hoy (un secreto expuesto o una vulnerabilidad crítica con parche). Lo que no tiene parche se analiza, se registra con su justificación y tiene fecha de revisión. Hoy hay dos riesgos aceptados y ninguno es explotable en nuestro uso.
+- **En ejecución:** los contenedores no tienen permisos del sistema ni pueden modificar sus propios archivos. La única puerta de entrada exige cifrado moderno y limita las peticiones por usuario. El pipeline rechaza cualquier cambio que quite estas protecciones.
 - Mostrar un reporte descargable de un escaneo.
 
 ### 4. Despliegue y verificación en AWS (2 min)

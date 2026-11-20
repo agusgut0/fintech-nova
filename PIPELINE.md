@@ -21,8 +21,8 @@ flowchart LR
 
 - **validate:** Yamllint revisa la sintaxis del pipeline y de Compose. `compose-validate` valida
   Compose contra su esquema y comprueba las reglas del stack sobre el archivo resuelto: solo `web`
-  publica un puerto, y es el `8443`; todos los servicios tienen `restart: always` y límites de CPU
-  y memoria. Hadolint revisa los Dockerfiles; ShellCheck (`shell-lint`) revisa los scripts de
+  publica un puerto, y es el `8443`; todos los servicios tienen `restart: always`, límites de CPU
+  y memoria, hardening (`cap_drop: [ALL]`, `no-new-privileges`, `read_only`) y rotación de logs. Hadolint revisa los Dockerfiles; ShellCheck (`shell-lint`) revisa los scripts de
   shell; `code-lint` analiza el código de las APIs y del frontend con un linter por lenguaje
   (Ruff, ESLint, `go vet` y `gofmt`, Checkstyle y `dotnet format`), cinco jobs en paralelo que
   solo informan; `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
@@ -101,6 +101,11 @@ defecto, por eso la publicación en Docker Hub se omite en las demás ramas.
 El estado de Terraform se guarda en GitLab (Operate → Terraform states), no en AWS, porque el
 sandbox borra sus recursos en cada relanzamiento. `infra-apply` se autentica contra ese estado con
 el token del job (`CI_JOB_TOKEN`), así que no requiere otra credencial.
+
+**Protección de `main`.** `main` es una rama protegida en la que nadie hace push directo: los
+cambios entran solo por merge request. Además, el proyecto exige que el pipeline termine bien para
+poder mergear (Settings → Merge requests → *Pipelines must succeed*). Así, un cambio que no pasa
+validación ni seguridad no puede llegar a la rama que se despliega.
 
 Al iniciar cada sesión del sandbox solo hay que actualizar las tres variables `AWS_*` y ejecutar
 `infra-apply`. El procedimiento completo está en [`AWS_EC2.md`](./AWS_EC2.md).

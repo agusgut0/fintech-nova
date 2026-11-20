@@ -168,7 +168,7 @@ flowchart LR
 
 | Stage | Jobs | Paralelismo | Para qué |
 |---|---|---|---|
-| `validate` | `yaml-lint`, `compose-validate`, `dockerfile-lint`, `shell-lint`, `terraform-validate`, `code-lint` × 5 | Todos a la vez; `code-lint` con `parallel: matrix`, un job por lenguaje | Frenar errores de sintaxis y malas prácticas antes de gastar tiempo en el build. `compose-validate` además rechaza un compose que publique puertos fuera de `web:8443` o que no tenga `restart: always` y límites de recursos en todos los servicios. |
+| `validate` | `yaml-lint`, `compose-validate`, `dockerfile-lint`, `shell-lint`, `terraform-validate`, `code-lint` × 5 | Todos a la vez; `code-lint` con `parallel: matrix`, un job por lenguaje | Frenar errores de sintaxis y malas prácticas antes de gastar tiempo en el build. `compose-validate` además rechaza un compose que publique puertos fuera de `web:8443` o al que le falte, en algún servicio, `restart: always`, los límites de recursos, el hardening o la rotación de logs. |
 | `security` (código) | `secret-scan`, `sast`, `dependency-scan` | Los 3 a la vez, **en paralelo con validate y build** (`needs: []`) | No necesitan imágenes: analizan el repositorio desde el primer segundo. |
 | `build` | `build-image` × 7 | `parallel: matrix`, un job por servicio | Construir las 7 imágenes y subirlas como candidatas (`<servicio>:<SHA>-candidate`). |
 | `security` (imágenes) | `image-scan` × 7 | `parallel: matrix` | Buscar vulnerabilidades en cada imagen construida. |
@@ -192,7 +192,7 @@ flowchart LR
 | Secretos (Gitleaks) | Detecta cualquier secreto en el historial. |
 | SAST (Semgrep) | Hay hallazgos de severidad `ERROR`. |
 | Dockerfiles (Hadolint) | Hay errores o el último `USER` es root. |
-| Compose (`compose-validate`) | Un servicio distinto de `web` publica puertos, `web` publica otro que no sea `8443`, o falta `restart: always` o los límites. |
+| Compose (`compose-validate`) | Un servicio distinto de `web` publica puertos, `web` publica otro que no sea `8443`, o falta `restart: always`, los límites, el hardening o la rotación de logs. |
 | Scripts (ShellCheck) | Hay advertencias o errores. |
 | Código (`code-lint`) | No corta: informa los hallazgos de estilo del código de las APIs y del frontend. |
 | Imágenes (Trivy) | Hay una vulnerabilidad `CRITICAL` **con parche disponible**. |
@@ -233,9 +233,15 @@ Todos los servicios tienen `restart: always`. Las imágenes se referencian como 
 * Todos los contenedores corren con usuarios sin privilegios (`appuser`, `app`, `nginx`, `mysql`). Hadolint lo verifica en cada pipeline: falla si el último `USER` de un Dockerfile es root.
 * `web` escucha en el puerto no privilegiado `8443` con `USER nginx`, sin necesitar root ni capacidades adicionales del kernel.
 
+### B2. Contenedores endurecidos y logs acotados
+* Los 7 servicios corren con `cap_drop: [ALL]` (sin capacidades del kernel), `no-new-privileges` y **sistema de archivos de solo lectura**. Lo que cada uno necesita escribir está declarado explícitamente (`tmpfs` en memoria o el volumen de la base). Si alguien entra a un contenedor, no puede instalar herramientas ni modificar el código.
+* Los logs rotan (3 archivos de 10 MB por servicio), para que no llenen el disco de la EC2.
+* `compose-validate` exige todo esto en cada pipeline. Detalle en [SEGURIDAD.md §3.E](./SEGURIDAD.md#e-hardening-del-contenedor-en-ejecución-parte-2).
+
 ### C. TLS y red aislada
 * **Certificado fuera de la imagen:** el par `cert.pem`/`key.pem` se genera en la EC2 durante el deploy y se monta como solo lectura (`./certs:/etc/nginx/certs:ro`). Nunca está en la imagen ni en el repositorio.
 * **Único punto de entrada:** solo `web` publica un puerto (`8443`). El `80` está cerrado y `verify-deployment` lo comprueba en cada despliegue.
+* **Proxy endurecido:** NGINX acepta solo TLS 1.2 y 1.3, agrega headers de seguridad (HSTS, `nosniff`, `X-Frame-Options`, `Content-Security-Policy`, `Referrer-Policy`) y limita cada IP a 10 peticiones por segundo a las APIs (responde `429` al superarlo). Detalle en [SEGURIDAD.md §3.F](./SEGURIDAD.md#f-endurecimiento-del-proxy-nginx-parte-2).
 
 ### D. Aislamiento lógico de la base de datos
 * Una instancia de MariaDB con 5 esquemas (`db_clientes`, `db_pagos`, `db_facturas`, `db_transacciones`, `db_tarjetas`). `00-databases.sh` los crea y da permisos al usuario de aplicación: ninguna API usa `root`.
@@ -280,6 +286,20 @@ No estaban anotados como mejoras. Aparecieron al automatizar y al escanear.
 | La verificación solo comprobaba que los endpoints respondieran. | También falla si el puerto 80 responde. | Un error en el Security Group se detecta solo. |
 | `api-facturas` recibía solo una de sus tres optimizaciones de arranque, por un error de sintaxis en el Dockerfile. | Corregido al revisar los hallazgos del análisis estático. | La API arranca con la configuración prevista ([ERRORES.md](./ERRORES.md), error 43). |
 | El código de `api-clientes` se copiaba a la raíz del sistema de archivos del contenedor. | Se copia a su propio directorio (`/app`). | Imagen más ordenada, sin mezclar el código con archivos del sistema. |
+| Los contenedores corrían sin root, pero con las capacidades del kernel por defecto y sistema de archivos escribible. | `cap_drop: [ALL]`, `no-new-privileges` y solo lectura en los 7 servicios, exigidos por el pipeline. | Un atacante que entre a un contenedor no puede instalar herramientas ni modificar el código. |
+| Logs sin límite de tamaño. | Rotación: 3 archivos de 10 MB por servicio. | Los logs no pueden llenar el disco de la EC2. |
+| NGINX con la configuración TLS por defecto y sin headers de seguridad ni límite de peticiones. | Solo TLS 1.2/1.3, headers de seguridad y 10 peticiones por segundo por IP a las APIs. | Menos superficie de ataque en la única puerta de entrada. |
+
+### C. Mejoras propuestas para las próximas iteraciones
+
+Analizadas y no implementadas en esta entrega, en orden de prioridad:
+
+| Mejora | Qué aporta | Por qué no está en esta entrega |
+|---|---|---|
+| **Análisis dinámico (DAST) con OWASP ZAP** después del deploy | Complementa el análisis estático: ataca la aplicación ya desplegada como lo haría un atacante externo (headers, cookies, respuestas de error). Sería un job después de `verify` que solo informa y deja un reporte HTML. | Solo se puede probar con una sesión del sandbox activa. |
+| **Rollback automático** si `verify-deployment` falla | La EC2 guardaría la versión anterior (`IMAGE_TAG`) y, si la nueva no responde, un job volvería a levantarla. Reduce el tiempo de caída ante un despliegue fallido (ver pregunta 4 de [§9](#-9-para-pensar--responder)). | Hay que probarlo forzando una falla en el sandbox. El rollback de los entornos de GitLab no alcanza: el deploy anterior depende de la IP y del `known_hosts` de una sesión que ya no existe. |
+| **SBOM por imagen** (inventario de componentes en formato CycloneDX, generado con Trivy) | Permite responder "¿alguna imagen usa la librería X?" ante una vulnerabilidad nueva, sin volver a escanear. Es un artifact más de `image-scan`. | Prioridad menor que las anteriores. |
+| **Hooks de `pre-commit`** con Gitleaks, yamllint y Hadolint | Detecta secretos y errores de configuración en la PC de cada integrante, antes del commit y del pipeline. | Requiere que cada integrante lo instale. |
 
 ---
 
