@@ -1,16 +1,41 @@
+# Bloques comunes (anclas YAML). Compose ignora las claves que empiezan con "x-".
+#
+# Hardening de todos los servicios (CIS Docker Benchmark):
+#  - cap_drop ALL: ningun servicio necesita capacidades del kernel (todos corren sin root
+#    y escuchan en puertos mayores a 1024).
+#  - no-new-privileges: un proceso no puede ganar privilegios (por ejemplo, con un binario setuid).
+#  - read_only: el sistema de archivos del contenedor es de solo lectura. Lo que cada servicio
+#    necesita escribir se declara en su "tmpfs" (en memoria) o en un volumen.
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+
+# Logs con rotacion: como maximo 3 archivos de 10 MB por servicio, para no llenar el disco de la EC2
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/db:${IMAGE_TAG:-1.0.0}
     container_name: dbPrincipal
+    <<: *hardening
+    logging: *logging
     env_file:
       - db/.env
     networks:
       - fintech_net
     volumes:
       - db_data:/var/lib/mysql
+    tmpfs:
+      - /tmp
+      - /run/mariadb:uid=999,gid=999   # socket de MariaDB (usuario mysql; en la imagen UBI va aca)
     restart: always
     healthcheck:
-      test: ["CMD","healthcheck.sh","--connect","--innodb_initialized"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,10 +48,14 @@ services:
   api-clientes:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/api-clientes:${IMAGE_TAG:-1.0.0}
     container_name: api_clientes
+    <<: *hardening
+    logging: *logging
     env_file:
       - api-clientes/.env
     networks:
       - fintech_net
+    tmpfs:
+      - /tmp
     depends_on:
       db:
         condition: service_healthy
@@ -39,10 +68,14 @@ services:
   api-transacciones:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/api-transacciones:${IMAGE_TAG:-1.0.0}
     container_name: api-transacciones
+    <<: *hardening
+    logging: *logging
     env_file:
       - api-transacciones/.env
     networks:
       - fintech_net
+    tmpfs:
+      - /tmp
     depends_on:
       db:
         condition: service_healthy
@@ -55,15 +88,19 @@ services:
   api-facturas:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/api-facturas:${IMAGE_TAG:-1.0.0}
     container_name: api-facturas
+    <<: *hardening
+    logging: *logging
     env_file:
       - api-facturas/.env
     networks:
       - fintech_net
+    tmpfs:
+      - /tmp                 # directorio de trabajo de Tomcat embebido
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL","wget --spider -q http://127.0.0.1:8080/facturas || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8080/facturas || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -77,10 +114,14 @@ services:
   api-tarjetas:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/api-tarjetas:${IMAGE_TAG:-1.0.0}
     container_name: api_tarjetas
+    <<: *hardening
+    logging: *logging
     env_file:
       - api-tarjetas/.env
     networks:
       - fintech_net
+    tmpfs:
+      - /tmp                 # .NET usa /tmp para sus archivos temporales y de diagnostico
     depends_on:
       db:
         condition: service_healthy
@@ -94,10 +135,14 @@ services:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/api-pagos:${IMAGE_TAG:-1.0.0}
     container_name: api-pagos
     init: true
+    <<: *hardening
+    logging: *logging
     env_file:
       - api-pagos/.env
     networks:
       - fintech_net
+    tmpfs:
+      - /tmp
     depends_on:
       db:
         condition: service_healthy
@@ -110,10 +155,18 @@ services:
   web:
     image: ${REGISTRY_IMAGE:-devopsgrupo6}/web:${IMAGE_TAG:-1.0.0}
     container_name: web
+    <<: *hardening
+    logging: *logging
     ports:
       - "8443:8443"
     networks:
       - fintech_net
+    tmpfs:
+      # Montados con dueño nginx (uid 101): por defecto Docker los crea como root y NGINX
+      # no puede escribir. /run es el destino real de /var/run, donde va nginx.pid.
+      - /var/cache/nginx:uid=101,gid=101    # buffers del proxy
+      - /run:uid=101,gid=101                # nginx.pid
+      - /tmp
     depends_on:
       api-tarjetas:
         condition: service_started
@@ -138,4 +191,3 @@ volumes:
 
 networks:
   fintech_net:
-    driver: bridge

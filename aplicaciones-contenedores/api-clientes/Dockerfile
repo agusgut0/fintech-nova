@@ -15,6 +15,8 @@ FROM python:3.11-slim
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Sin WORKDIR, el COPY dejaba el codigo en la raiz del sistema de archivos (Hadolint DL3045)
+WORKDIR /app
 COPY . .
 EXPOSE 8080
 

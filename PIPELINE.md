@@ -19,8 +19,13 @@ flowchart LR
     D --> T["verify<br/>HTTPS: web y 5 APIs"]
 ```
 
-- **validate:** Yamllint revisa el pipeline y Compose; Hadolint revisa los Dockerfiles;
-  `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
+- **validate:** Yamllint revisa la sintaxis del pipeline y de Compose. `compose-validate` valida
+  Compose contra su esquema y comprueba las reglas del stack sobre el archivo resuelto: solo `web`
+  publica un puerto, y es el `8443`; todos los servicios tienen `restart: always`, límites de CPU
+  y memoria, hardening (`cap_drop: [ALL]`, `no-new-privileges`, `read_only`) y rotación de logs. Hadolint revisa los Dockerfiles; ShellCheck (`shell-lint`) revisa los scripts de
+  shell; `code-lint` analiza el código de las APIs y del frontend con un linter por lenguaje
+  (Ruff, ESLint, `go vet` y `gofmt`, Checkstyle y `dotnet format`), cinco jobs en paralelo que
+  solo informan; `terraform-validate` revisa el formato y la sintaxis de la infraestructura (`infra/`) sin
   credenciales de AWS.
 - **build:** construye las siete imágenes (`db`, `api-clientes`, `api-pagos`, `api-facturas`,
   `api-transacciones`, `api-tarjetas` y `web`) en paralelo. Las sube al registry con una etiqueta
@@ -52,16 +57,20 @@ flowchart LR
   cualquiera no devuelve HTTP 200, o si el puerto `80` responde (debe estar cerrado). El entorno
   `production` muestra en GitLab (Operate → Environments) el enlace a la aplicación desplegada.
   Si `deploy` falla, `verify` no corre y el pipeline queda en rojo.
-- **runners:** todos los jobs usan el mismo tag de runner (`runner-without-dind`).
+- **runners:** todos los jobs usan el mismo tag de runner (`runner-without-dind`). Ese runner
+  comparte su Docker con los jobs por el socket, así que build, escaneo y publicación no levantan
+  un servicio Docker-in-Docker: menos contenedores por pipeline y menos uso del disco del runner.
 
-El escaneo de Trivy corta el flujo ante vulnerabilidades **HIGH** o **CRITICAL**. Semgrep también
-falla ante los hallazgos que reporta con la configuración automática seleccionada. Un fallo en
-validación o seguridad impide que se publiquen las etiquetas finales y que avance el despliegue.
+El escaneo de imágenes de Trivy corta el flujo ante vulnerabilidades **CRITICAL con parche
+disponible**. Semgrep corta ante hallazgos de severidad `ERROR` y Gitleaks ante cualquier secreto.
+`dependency-scan` solo informa: deja el job en advertencia y no corta. Un fallo en validación o
+seguridad impide que se publiquen las etiquetas finales y que avance el despliegue. La política
+completa y su justificación están en [`SEGURIDAD.md`](./SEGURIDAD.md#42-política-ante-vulnerabilidades).
 
 ## Configuración necesaria en GitLab
 
-El despliegue requiere un runner con soporte para Docker-in-Docker y conectividad SSH hacia la
-instancia EC2. Configurar las siguientes variables de CI/CD como **protegidas** y, para valores
+El pipeline requiere el runner del proyecto (tag `runner-without-dind`) con salida a internet, para
+llegar a Docker Hub, a la API de AWS y al puerto 22 de la instancia EC2. Configurar las siguientes variables de CI/CD como **protegidas** y, para valores
 secretos compatibles, **enmascaradas**. Los secretos y archivos `.env` no se guardan en el
 repositorio:
 
@@ -92,6 +101,11 @@ defecto, por eso la publicación en Docker Hub se omite en las demás ramas.
 El estado de Terraform se guarda en GitLab (Operate → Terraform states), no en AWS, porque el
 sandbox borra sus recursos en cada relanzamiento. `infra-apply` se autentica contra ese estado con
 el token del job (`CI_JOB_TOKEN`), así que no requiere otra credencial.
+
+**Protección de `main`.** `main` es una rama protegida en la que nadie hace push directo: los
+cambios entran solo por merge request. Además, el proyecto exige que el pipeline termine bien para
+poder mergear (Settings → Merge requests → *Pipelines must succeed*). Así, un cambio que no pasa
+validación ni seguridad no puede llegar a la rama que se despliega.
 
 Al iniciar cada sesión del sandbox solo hay que actualizar las tres variables `AWS_*` y ejecutar
 `infra-apply`. El procedimiento completo está en [`AWS_EC2.md`](./AWS_EC2.md).
