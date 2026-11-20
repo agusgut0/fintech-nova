@@ -62,6 +62,63 @@ dockerfile-lint:
       - hadolint-report.json
       - dockerfiles.txt
 
+compose-validate:
+  # yamllint solo revisa la sintaxis YAML. Este job valida el compose contra el esquema de
+  # Docker Compose (una clave mal escrita, como "restar:", pasa yamllint pero no este job) y
+  # comprueba automaticamente las reglas del TP sobre el archivo ya resuelto.
+  stage: validate
+  tags: [$RUNNER_TAG]
+  image: docker:27.5.1-cli    # trae el plugin de Compose; "config" no necesita el daemon
+  script:
+    - cd "$APP_DIR"
+    # Los .env no estan en el repo; se usan los env.example (valores de ejemplo, sin secretos)
+    # solo para que Compose pueda resolver los env_file.
+    - for s in db api-clientes api-pagos api-facturas api-transacciones api-tarjetas; do cp "$s/env.example" "$s/.env"; done
+    - docker compose config --quiet
+    - docker compose config --format json > compose-resuelto.json
+    - apk add --no-cache jq
+    - |
+      jq -r '.services | to_entries[] |
+        (select(.value.restart != "always") | "\(.key): falta restart: always"),
+        (select(.value.deploy.resources.limits.cpus == null or .value.deploy.resources.limits.memory == null)
+          | "\(.key): faltan limites de CPU o memoria"),
+        (select(.key != "web" and ((.value.ports // []) | length) > 0) | "\(.key): publica puertos (solo web puede)"),
+        (select(.key == "web") | .value.ports[]? | select(.published != "8443")
+          | "web: publica el puerto \(.published) (solo se permite 8443)")
+      ' compose-resuelto.json > reglas-incumplidas.txt
+    - |
+      if [ -s reglas-incumplidas.txt ]; then
+        cat reglas-incumplidas.txt
+        exit 1
+      fi
+      echo "Compose valido: solo web publica 8443, restart: always y limites en todos los servicios."
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - "$APP_DIR/compose-resuelto.json"
+      - "$APP_DIR/reglas-incumplidas.txt"
+
+shell-lint:
+  # ShellCheck sobre los scripts del repo (00-databases.sh corre dentro del contenedor de la DB).
+  stage: validate
+  tags: [$RUNNER_TAG]
+  image: koalaman/shellcheck-alpine:v0.10.0
+  script:
+    - find . -name '*.sh' -not -path './.git/*' | sort > scripts.txt
+    - cat scripts.txt
+    - test -s scripts.txt
+    # Paso 1: reporte completo, incluidas las sugerencias (info y style). Nunca corta.
+    - shellcheck --format json $(cat scripts.txt) > shellcheck-report.json || true
+    # Paso 2: la regla de corte. Falla con advertencias o errores; las sugerencias solo se informan.
+    - shellcheck --severity warning $(cat scripts.txt)
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - shellcheck-report.json
+      - scripts.txt
+
 # Base comun de los jobs de Terraform (los jobs la reutilizan con "extends")
 .terraform-base:
   tags: [$RUNNER_TAG]

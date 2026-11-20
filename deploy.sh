@@ -60,6 +60,9 @@ fi
 # ==============================================================================
 
 echo "==> Configurando instancia EC2 ($EC2_IP)..."
+# El heredoc va sin comillas a proposito: las variables se expanden en la PC y lo que debe
+# evaluarse en la EC2 esta escapado con \$.
+# shellcheck disable=SC2087
 ssh $SSH_OPTS "${EC2_USER}@${EC2_IP}" << EOF
     set -euo pipefail
 
@@ -105,6 +108,8 @@ done
 # ==============================================================================
 
 echo "==> Generando certificado TLS en runtime y desplegando contenedores..."
+# Mismo criterio que el heredoc anterior: ${REMOTE_DIR} se expande en la PC.
+# shellcheck disable=SC2087
 ssh $SSH_OPTS "${EC2_USER}@${EC2_IP}" << EOF
     set -euo pipefail
     cd "${REMOTE_DIR}"
