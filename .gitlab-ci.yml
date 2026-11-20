@@ -84,14 +84,19 @@ compose-validate:
           | "\(.key): faltan limites de CPU o memoria"),
         (select(.key != "web" and ((.value.ports // []) | length) > 0) | "\(.key): publica puertos (solo web puede)"),
         (select(.key == "web") | .value.ports[]? | select(.published != "8443")
-          | "web: publica el puerto \(.published) (solo se permite 8443)")
+          | "web: publica el puerto \(.published) (solo se permite 8443)"),
+        (select((.value.cap_drop // []) | index("ALL") | not) | "\(.key): falta cap_drop: [ALL]"),
+        (select((.value.security_opt // []) | index("no-new-privileges:true") | not)
+          | "\(.key): falta security_opt no-new-privileges:true"),
+        (select(.value.read_only != true) | "\(.key): falta read_only: true"),
+        (select(.value.logging.options["max-size"] == null) | "\(.key): falta la rotacion de logs (max-size)")
       ' compose-resuelto.json > reglas-incumplidas.txt
     - |
       if [ -s reglas-incumplidas.txt ]; then
         cat reglas-incumplidas.txt
         exit 1
       fi
-      echo "Compose valido: solo web publica 8443, restart: always y limites en todos los servicios."
+      echo "Compose valido: solo web publica 8443; restart, limites, hardening y rotacion de logs en todos los servicios."
   artifacts:
     when: always
     expire_in: 30 days
