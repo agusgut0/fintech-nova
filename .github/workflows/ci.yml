@@ -32,7 +32,7 @@ jobs:
     name: lint (YAML, Dockerfiles, Compose, shell)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: yamllint
         run: |
@@ -80,7 +80,7 @@ jobs:
     name: secret-scan (Gitleaks, todo el historial)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # todo el historial, no solo el último commit
       - name: Gitleaks
@@ -95,7 +95,7 @@ jobs:
       contents: read
       security-events: write   # para publicar los hallazgos en la pestaña Security del repo
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Semgrep (reporte completo + corte solo con severidad ERROR)
         run: |
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.99.0 \
@@ -121,7 +121,7 @@ jobs:
       matrix:
         service: [db, api-clientes, api-pagos, api-facturas, api-transacciones, api-tarjetas, web]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Build
         run: docker build --pull --tag "fintech-nova/${{ matrix.service }}:${{ github.sha }}" "$APP_DIR/${{ matrix.service }}"
@@ -157,7 +157,7 @@ jobs:
       REGISTRY_IMAGE: fintech-nova
       IMAGE_TAG: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Build de las 7 imágenes
         run: |
