@@ -13,10 +13,12 @@ Plataforma bancaria de **5 APIs en 5 lenguajes** (Python, Node.js, Java, Go y .N
 
 Es el trabajo práctico integrador de *Desarrollo y Operaciones (DevOps)*, de Ingeniería en Sistemas (UTN FRC, 2026), hecho por un equipo de 4 personas. **Nota: 10.**
 
-![Consola de operaciones: estado y latencia de cada microservicio, y ABM de pagos con un monto marcado "Sin cotización"](./img-portfolio/consola-claro.png)
+[![Demo de la consola: estado de los 5 microservicios, alta y borrado de un pago, pago "Sin cotización" y transacción "Sin geolocalización"](./img-portfolio/demo.gif)](https://agusgut0.github.io/fintech-nova/)
 
 <details>
-<summary>Modo oscuro y mobile</summary>
+<summary>Capturas en modo claro, oscuro y mobile</summary>
+
+![Consola en modo claro](./img-portfolio/consola-claro.png)
 
 ![Consola en modo oscuro: transacción con "Sin geolocalización"](./img-portfolio/consola-oscuro.png)
 

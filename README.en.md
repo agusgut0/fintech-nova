@@ -15,7 +15,7 @@ This was the capstone project of the *DevOps* course in the Information Systems 
 
 > Detailed documentation (ADRs, runbooks, postmortems, security policy) is in Spanish. This page summarizes it.
 
-![Operations console: health and latency of each microservice, and the payments table with an amount flagged "Sin cotización" (no FX rate)](./img-portfolio/consola-claro.png)
+[![Console demo: health of the 5 microservices, adding and deleting a payment, and degraded fields when an external API fails](./img-portfolio/demo.gif)](https://agusgut0.github.io/fintech-nova/)
 
 <sub>Screenshot with sample data. The UI is in Spanish. **[Try the live demo](https://agusgut0.github.io/fintech-nova/)**: the real console, with the APIs simulated in the browser.</sub>
 
