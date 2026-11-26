@@ -1,53 +1,847 @@
+/* =========================================================================================
+   FinTech Nova · "Libro mayor de operaciones"
+   Dirección: editorial + utilitaria. Tinta azul marino sobre papel, filetes de libro contable,
+   cifras en monoespaciada tabular y un único acento dorado para lo que está seleccionado.
+   Tipografía: IBM Plex Serif (títulos), Plex Sans (interfaz) y Plex Mono (datos), autoalojadas.
+   ========================================================================================= */
+
+:root {
+  color-scheme: light dark;
+
+  --fuente-titulo: 'IBM Plex Serif', Georgia, serif;
+  --fuente-texto: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --fuente-datos: 'IBM Plex Mono', Consolas, monospace;
+
+  /* Papel y tinta (modo claro). Contrastes de texto ≥ 4.5:1 sobre --papel. */
+  --papel: #f4f1ea;
+  --hoja: #fbf9f4;
+  --tinta: #0b1f33;
+  --tinta-suave: #44546a;
+  --filete: #d9d2c3;
+  --filete-fuerte: #0b1f33;
+  --acento: #b7862b;            /* solo bordes y marcas, nunca texto chico */
+  --ok: #1d6f47;
+  --caido: #b42318;
+  --degradado-tinta: #7a4f00;
+  --degradado-fondo: #fbefd5;
+  --sombra: 0 1px 0 var(--filete), 0 12px 32px -18px rgb(11 31 51 / 0.35);
+
+  --radio: 2px;
+  --e1: 0.25rem;
+  --e2: 0.5rem;
+  --e3: 0.75rem;
+  --e4: 1rem;
+  --e5: 1.5rem;
+  --e6: 2.5rem;
+  --e7: 4rem;
+  --ancho: 76rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --papel: #0a1628;
+    --hoja: #0f2036;
+    --tinta: #ede7da;
+    --tinta-suave: #a7b4c4;
+    --filete: #24395a;
+    --filete-fuerte: #ede7da;
+    --acento: #d6a645;
+    --ok: #4cc38a;
+    --caido: #f2706a;
+    --degradado-tinta: #f3cd7d;
+    --degradado-fondo: #2c2410;
+    --sombra: 0 1px 0 var(--filete), 0 16px 40px -20px rgb(0 0 0 / 0.7);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--papel);
+  color: var(--tinta);
+  font: 400 1rem/1.55 var(--fuente-texto);
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  font-family: system-ui, sans-serif;
-  max-width: 900px;
-  margin: 2rem auto;
-  padding: 0 1rem;
+  margin: 0;
+  min-height: 100vh;
+  /* Rayado de libro contable, muy tenue, solo en el fondo */
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, color-mix(in srgb, var(--filete) 35%, transparent) 31px 32px);
 }
 
-.integrantes {
-  color: #555;
-  font-size: 0.95rem;
-  margin-top: -0.5rem;
-  margin-bottom: 1.5rem;
+#app {
+  max-width: var(--ancho);
+  margin: 0 auto;
+  padding: var(--e6) var(--e5) var(--e7);
 }
 
-nav {
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2 {
+  text-wrap: balance;
+}
+
+#contenido {
+  scroll-margin-top: var(--e5);
+}
+
+button,
+a,
+select {
+  touch-action: manipulation;              /* sin la demora del doble toque en mobile */
+  -webkit-tap-highlight-color: transparent; /* el feedback lo dan :hover y :focus-visible */
+}
+
+/* Sin esto, un display: grid/flex del autor le gana al atributo hidden y el elemento se ve */
+[hidden] {
+  display: none !important;
+}
+
+.tenue {
+  color: var(--tinta-suave);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.saltar {
+  position: absolute;
+  left: var(--e4);
+  top: -3rem;
+  padding: var(--e2) var(--e4);
+  background: var(--tinta);
+  color: var(--papel);
+  z-index: 50;
+}
+
+.saltar:focus {
+  top: var(--e4);
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.icono {
+  width: 1.1em;
+  height: 1.1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+/* ----------------------------------------------------------------------------------------
+   Cabecera: mancheta editorial + estado general
+   ---------------------------------------------------------------------------------------- */
+
+.cabecera {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: var(--e5);
+  padding-bottom: var(--e5);
+  border-bottom: 3px double var(--filete-fuerte);
+}
+
+.marca__antetitulo {
+  font: 500 0.75rem/1 var(--fuente-datos);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tinta-suave);
+}
+
+.marca h1 {
+  font: 600 clamp(2.5rem, 6vw, 4.25rem) / 1 var(--fuente-titulo);
+  letter-spacing: -0.02em;
+  margin: var(--e2) 0 var(--e3);
+}
+
+.marca__bajada {
+  max-width: 38rem;
+  color: var(--tinta-suave);
+}
+
+.resumen-estado {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e3);
+  padding: var(--e3) var(--e3) var(--e3) var(--e4);
+  border: 1px solid var(--filete);
+  background: var(--hoja);
+  border-radius: var(--radio);
 }
 
-nav button {
-  padding: 0.5rem 1rem;
+.resumen-estado__texto {
+  font-weight: 600;
+}
+
+.resumen-estado__hace {
+  font-size: 0.8125rem;
+}
+
+/* Punto de estado: el color nunca es la única señal, siempre va con texto al lado */
+.punto {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--tinta-suave);
+  flex: none;
+}
+
+[data-estado='ok'] .punto {
+  position: relative;
+  background: var(--ok);
+}
+
+/* Onda del "latido": un anillo que crece y se desvanece (solo transform y opacity) */
+[data-estado='ok'] .punto::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: latido 2.4s ease-out infinite;
+}
+
+[data-estado='caido'] .punto {
+  background: var(--caido);
+}
+
+@keyframes latido {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  70%,
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* ----------------------------------------------------------------------------------------
+   Tablero: los 5 servicios como fichas de un libro, que además son la navegación
+   ---------------------------------------------------------------------------------------- */
+
+.navegacion {
+  margin: var(--e6) 0 var(--e5);
+}
+
+.tablero {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--filete-fuerte);
+  background: var(--hoja);
+}
+
+.tarjeta {
+  position: relative;
+  display: grid;
+  gap: var(--e1);
+  align-content: start;
+  min-height: 11rem;
+  padding: var(--e4) var(--e4) var(--e3);
+  border: 0;
+  border-right: 1px solid var(--filete);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  border: 1px solid #ccc;
-  background: #f5f5f5;
-  border-radius: 4px;
+  transition: background-color 180ms ease;
+  animation: entrada 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--orden) * 70ms);
 }
 
-nav button.activo {
-  background: #333;
-  color: #fff;
-  border-color: #333;
+.tarjeta:last-child {
+  border-right: 0;
 }
 
-section form {
+/* Filete dorado superior: marca la ficha abierta */
+.tarjeta::before {
+  content: '';
+  position: absolute;
+  inset: -1px -1px auto;
+  height: 4px;
+  background: var(--acento);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms ease;
+}
+
+.tarjeta:hover {
+  background: color-mix(in srgb, var(--filete) 30%, transparent);
+}
+
+.tarjeta[aria-selected='true'] {
+  background: var(--papel);
+}
+
+.tarjeta[aria-selected='true']::before {
+  transform: scaleX(1);
+}
+
+.tarjeta__ruta {
+  font: 400 0.75rem/1.2 var(--fuente-datos);
+  color: var(--tinta-suave);
+}
+
+.tarjeta__nombre {
+  font: 600 1.375rem/1.15 var(--fuente-titulo);
+  margin-top: var(--e2);
+}
+
+.tarjeta__tecnologia {
+  font-size: 0.8125rem;
+  color: var(--tinta-suave);
+}
+
+.tarjeta__pie {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--e2);
+  margin-top: auto;
+  padding-top: var(--e3);
+  font-size: 0.8125rem;
+}
+
+.tarjeta__estado {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e2);
+  font-weight: 500;
+}
+
+.tarjeta[data-estado='caido'] .tarjeta__estado-texto {
+  color: var(--caido);
+}
+
+.tarjeta__latencia {
+  font: 500 0.8125rem/1 var(--fuente-datos);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mini gráfica de latencia: la última medición queda a la derecha */
+.pulso {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 1.25rem;
+  margin-top: var(--e2);
+  border-bottom: 1px solid var(--filete);
+}
+
+.pulso span {
+  flex: 1;
+  height: 100%;
+  background: var(--tinta);
+  opacity: 0.55;
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 300ms ease;
+}
+
+.pulso span.caida {
+  background: var(--caido);
+  opacity: 1;
+}
+
+.pulso span:last-child.medida {
+  opacity: 1;
+}
+
+/* ----------------------------------------------------------------------------------------
+   Sección de cada servicio
+   ---------------------------------------------------------------------------------------- */
+
+.panel__cabecera {
+  display: flex;
+  flex-wrap: wrap;              /* en pantallas angostas el botón pasa abajo del título */
+  justify-content: space-between;
+  align-items: end;
+  gap: var(--e4);
+  padding-bottom: var(--e3);
+  margin-bottom: var(--e5);
+  border-bottom: 1px solid var(--filete-fuerte);
+}
+
+.panel__cabecera h2 {
+  font: 600 2rem/1.1 var(--fuente-titulo);
+}
+
+.panel__resumen {
+  margin-top: var(--e1);
+  font: 400 0.875rem/1.4 var(--fuente-datos);
+  font-variant-numeric: tabular-nums;
+  color: var(--tinta-suave);
+  min-height: 1.4em;
+}
+
+.panel__cuerpo {
+  display: grid;
+  grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr);
+  gap: var(--e6);
+  align-items: start;
+}
+
+/* Formulario de alta */
+.alta {
+  display: grid;
+  gap: var(--e4);
+  padding: var(--e5);
+  background: var(--hoja);
+  border: 1px solid var(--filete);
+  box-shadow: var(--sombra);
+  position: sticky;
+  top: var(--e4);
+}
+
+.alta h3 {
+  font: 500 0.75rem/1 var(--fuente-datos);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tinta-suave);
+}
+
+.campo {
+  display: grid;
+  gap: var(--e1);
+}
+
+.campo label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.campo small {
+  font-size: 0.75rem;
+  color: var(--tinta-suave);
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--filete);
+  border-bottom: 2px solid var(--tinta-suave);
+  border-radius: var(--radio);
+  background: var(--papel);
+  color: var(--tinta);
+  font: 400 1rem/1.3 var(--fuente-texto);
+  transition: border-color 150ms ease;
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-bottom-color: var(--acento);
+  box-shadow: 0 2px 0 0 var(--acento);
+}
+
+input[type='number'],
+input[name='dni'],
+input[name='origen_ip'],
+input[name='numero'] {
+  font-family: var(--fuente-datos);
+}
+
+input:user-invalid {
+  border-bottom-color: var(--caido);
+}
+
+.form-error {
+  padding: var(--e2) var(--e3);
+  border-left: 3px solid var(--caido);
+  color: var(--caido);
+  font-size: 0.875rem;
+  background: color-mix(in srgb, var(--caido) 8%, transparent);
+}
+
+/* Botones */
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e2);
+  min-height: 2.75rem;
+  padding: var(--e2) var(--e4);
+  border: 1px solid var(--tinta);
+  border-radius: var(--radio);
+  background: transparent;
+  color: var(--tinta);
+  font: 500 0.9375rem/1 var(--fuente-texto);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.boton:hover {
+  background: color-mix(in srgb, var(--tinta) 8%, transparent);
+}
+
+.boton--primario {
+  background: var(--tinta);
+  color: var(--papel);
+}
+
+.boton--primario:hover {
+  background: color-mix(in srgb, var(--tinta) 86%, var(--acento));
+}
+
+.boton--primario:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.boton--fantasma {
+  border-color: transparent;
+}
+
+.boton--icono {
+  width: 2.75rem;
+  padding: 0;
+}
+
+/* Libro de registros */
+.libro {
+  min-width: 0;
+}
+
+.libro__scroll {
+  overflow-x: auto;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 2rem;
+  font-size: 0.9375rem;
 }
 
-th, td {
+th {
+  padding: 0 var(--e3) var(--e2);
+  border-bottom: 2px solid var(--filete-fuerte);
+  font: 500 0.6875rem/1.2 var(--fuente-datos);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   text-align: left;
-  padding: 0.5rem;
-  border-bottom: 1px solid #ddd;
+  color: var(--tinta-suave);
+  white-space: nowrap;
+}
+
+td {
+  padding: var(--e3);
+  border-bottom: 1px solid var(--filete);
+  vertical-align: middle;
+  overflow-wrap: anywhere;   /* un email o un alias muy largo no rompe la tabla */
+}
+
+tbody tr {
+  transition: background-color 150ms ease;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--hoja) 70%, var(--filete));
+}
+
+.mono {
+  font-family: var(--fuente-datos);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.acciones {
+  width: 1%;
+  text-align: right;
+}
+
+/* Dato que no se pudo enriquecer: rayado de "pendiente", con su explicación en el title */
+.degradado {
+  display: inline-block;
+  padding: 0.125rem var(--e2);
+  border: 1px dashed currentColor;
+  border-radius: var(--radio);
+  background: repeating-linear-gradient(-45deg, var(--degradado-fondo) 0 6px, transparent 6px 9px);
+  color: var(--degradado-tinta);
+  font: 500 0.75rem/1.4 var(--fuente-texto);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.boton-borrar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e1);
+  min-height: 2.25rem;
+  padding: var(--e1) var(--e2);
+  border: 1px solid transparent;
+  border-radius: var(--radio);
+  background: transparent;
+  color: var(--tinta-suave);
+  font: 500 0.8125rem/1 var(--fuente-texto);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.boton-borrar:hover {
+  color: var(--caido);
+  border-color: currentColor;
+}
+
+.boton-borrar.confirmando {
+  color: var(--hoja);
+  background: var(--caido);
+  border-color: var(--caido);
+}
+
+.fila-nueva {
+  animation: resaltar 1.8s ease-out;
+}
+
+@keyframes resaltar {
+  from {
+    background: color-mix(in srgb, var(--acento) 28%, transparent);
+  }
+}
+
+/* Estados de la tabla: cargando, vacía y error */
+.esqueleto td span {
+  display: block;
+  height: 0.75rem;
+  border-radius: var(--radio);
+  background: var(--filete);
+  animation: brillo 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes brillo {
+  to {
+    opacity: 0.35;
+  }
+}
+
+.libro__vacio {
+  padding: var(--e6) var(--e4);
+  text-align: center;
+  border-bottom: 1px solid var(--filete);
+  font-family: var(--fuente-titulo);
+  font-size: 1.125rem;
+}
+
+.libro__vacio .tenue {
+  font: 400 0.875rem/1.5 var(--fuente-texto);
+  margin-top: var(--e1);
+}
+
+.libro__fallo {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--e4);
+  padding: var(--e4) var(--e5);
+  border: 1px solid var(--caido);
+  border-left-width: 4px;
+  background: color-mix(in srgb, var(--caido) 7%, var(--hoja));
+}
+
+.libro__fallo > .icono {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--caido);
+}
+
+.libro__fallo-titulo {
+  font-weight: 600;
+}
+
+.libro__fallo-detalle {
+  font-size: 0.875rem;
+}
+
+/* ----------------------------------------------------------------------------------------
+   Pie y avisos
+   ---------------------------------------------------------------------------------------- */
+
+.pie {
+  display: grid;
+  gap: var(--e1);
+  margin-top: var(--e7);
+  padding-top: var(--e4);
+  border-top: 3px double var(--filete-fuerte);
+  font-size: 0.8125rem;
+}
+
+.avisos {
+  position: fixed;
+  right: var(--e4);
+  bottom: var(--e4);
+  display: grid;
+  gap: var(--e2);
+  z-index: 30;
+}
+
+.aviso {
+  padding: var(--e3) var(--e4);
+  background: var(--tinta);
+  color: var(--papel);
+  border-left: 4px solid var(--ok);
+  box-shadow: var(--sombra);
+  font-size: 0.9375rem;
+  animation: entrada 220ms ease-out both;
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+
+.aviso--error {
+  border-left-color: var(--caido);
+}
+
+.aviso--saliendo {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+@keyframes entrada {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ----------------------------------------------------------------------------------------
+   Responsive y movimiento reducido
+   ---------------------------------------------------------------------------------------- */
+
+@media (max-width: 1024px) {
+  .panel__cuerpo {
+    grid-template-columns: 1fr;
+    gap: var(--e5);
+  }
+
+  .alta {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    align-items: end;
+  }
+
+  .alta h3,
+  .alta .form-error {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 860px) {
+  #app {
+    padding: var(--e5) var(--e4) var(--e6);
+  }
+
+  .cabecera {
+    grid-template-columns: 1fr;
+  }
+
+  /* El tablero pasa a una fila deslizable: las fichas mantienen su ancho legible */
+  .tablero {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(11rem, 1fr);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+
+  .tarjeta {
+    scroll-snap-align: start;
+    min-height: 10rem;
+  }
+}
+
+/* En mobile cada fila pasa a ser una ficha: etiqueta a la izquierda, valor a la derecha */
+@media (max-width: 600px) {
+  .libro thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .libro tbody tr {
+    display: grid;
+    padding: var(--e3) 0;
+    border-bottom: 1px solid var(--filete-fuerte);
+  }
+
+  .libro td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--e4);
+    padding: var(--e1) 0;
+    border: 0;
+    text-align: right;
+  }
+
+  .libro td[data-label]::before {
+    content: attr(data-label);
+    font: 500 0.6875rem/1.2 var(--fuente-datos);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tinta-suave);
+    text-align: left;
+  }
+
+  .libro td.acciones {
+    width: auto;
+    justify-content: flex-end;
+    padding-top: var(--e2);
+  }
+
+  .esqueleto td::before {
+    display: none;
+  }
+
+  .esqueleto td span {
+    width: 100%;
+  }
+
+  .libro__fallo {
+    grid-template-columns: auto 1fr;
+  }
+
+  .libro__fallo .boton {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

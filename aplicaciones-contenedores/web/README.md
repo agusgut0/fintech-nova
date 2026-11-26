@@ -1,8 +1,25 @@
 # web (Vite)
 
-Panel único que consume las 5 APIs del TP (clientes, pagos, facturas, transacciones, tarjetas).
-Es JavaScript vanilla + Vite (sin framework), pensado para mantener el ejercicio de Docker en
-foco. Todas las llamadas van a rutas relativas `/api/<servicio>/...`.
+Consola de operaciones que consume las 5 APIs (clientes, pagos, facturas, transacciones y tarjetas).
+Es JavaScript sin framework con Vite. Todas las llamadas van a rutas relativas `/api/<servicio>/...`.
+
+## Qué muestra
+
+- **Tablero de servicios:** una ficha por microservicio con estado, latencia y una mini gráfica de las últimas 12 mediciones. Se consulta cada 15 s. Las fichas son también las pestañas: se navegan con las flechas y la URL guarda la pestaña abierta (`#pagos`).
+- **Degradación visible:** si fallan las APIs externas, el campo aparece como "Sin cotización" o "Sin geolocalización", en lugar de una celda vacía.
+- **ABM:** alta con validación y errores en línea, estados de carga y de tabla vacía, y borrado con confirmación (doble clic en 4 s).
+
+## Diseño
+
+| Archivo | Contenido |
+|---|---|
+| `src/entidades.js` | Campos y formato de cada entidad. Para sumar un servicio, se agrega acá (y su `location` en `nginx.conf`). |
+| `src/formato.js` | Montos, fechas y tiempos con `Intl` (es-AR). |
+| `src/main.js` | Armado del DOM, sin `innerHTML`: los datos de las APIs van por `textContent`. |
+| `src/style.css` | Tokens de color en variables CSS, modo claro y oscuro, y layout responsive (en mobile, las filas pasan a fichas). |
+
+- **Fuentes:** IBM Plex Serif, Sans y Mono, instaladas con `@fontsource` y empaquetadas por Vite. Se sirven desde el mismo origen, así la CSP de NGINX (`default-src 'self'`) no tiene que habilitar CDNs.
+- **Accesibilidad:** contraste WCAG AA en los dos temas, foco visible, pestañas con el patrón de WAI-ARIA, regiones `aria-live` para los avisos y `prefers-reduced-motion`.
 
 ## Cómo levantar en LOCAL (sin Docker)
 
@@ -21,15 +38,15 @@ de cada `api-*`) en estos puertos:
 
 ```sh
 cd web
-npm install
+npm ci
 npm run dev
 ```
-Abrir `http://localhost:5173`.
+Abrir `http://localhost:5173`. Sin las APIs corriendo, el tablero muestra los 5 servicios "Sin respuesta".
 
 ### Opción B: build + servir estático (simula producción)
 ```sh
 cd web
-npm install
+npm ci
 npm run build      # genera dist/
 npm run preview    # sirve dist/ en un puerto local, PERO sin el proxy de /api
 ```

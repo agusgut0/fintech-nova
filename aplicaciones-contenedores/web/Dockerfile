@@ -5,7 +5,8 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+# npm ci instala exactamente lo que fija package-lock.json (build reproducible)
+RUN npm ci
 
 COPY . .
 
