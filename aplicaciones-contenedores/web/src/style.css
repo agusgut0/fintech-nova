@@ -845,3 +845,18 @@ tbody tr:hover {
     transition-duration: 1ms !important;
   }
 }
+
+/* Franja de la demo pública (solo existe en "vite build --mode demo", ver src/demo.js) */
+.franja-demo {
+  padding: var(--e2) var(--e4);
+  background: var(--tinta);
+  color: var(--papel);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.franja-demo a {
+  color: inherit;
+  font-weight: 600;
+  text-underline-offset: 3px;
+}

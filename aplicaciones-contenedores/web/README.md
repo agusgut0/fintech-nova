@@ -58,3 +58,7 @@ crear) y usando `nginx/nginx.conf`, que ya viene armado con los 5 proxys.
 Este directorio **no incluye Dockerfile** — es parte de la consigna del TP escribirlo (multistage:
 `node` para `npm run build`, `nginx` para servir `dist/` + `nginx/nginx.conf`). Ver el
 `README.md` en la raíz de `tp-2026/`.
+
+## Demo pública
+
+`npx vite build --mode demo` genera una versión que no necesita backend: [`src/demo.js`](./src/demo.js) responde las rutas `/api/*` desde memoria, con las mismas rutas, campos y degradación que las APIs reales. Además se sirve bajo `/fintech-nova/` y lleva la CSP como `<meta>`, porque GitHub Pages no envía los headers de NGINX. La publica el workflow `pages.yml`. El build normal, el de la imagen de Docker, no incluye ese código.

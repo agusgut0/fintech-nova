@@ -463,4 +463,14 @@ function render() {
   window.addEventListener('hashchange', () => seleccionar(location.hash.slice(1)));
 }
 
-render();
+// En la demo pública (vite build --mode demo) las APIs se simulan en el navegador antes de
+// arrancar. MODE se reemplaza en tiempo de build: en el build normal la condición es falsa y
+// Vite descarta demo.js por completo.
+if (import.meta.env.MODE === 'demo') {
+  import('./demo.js').then(({ instalarDemo }) => {
+    instalarDemo();
+    render();
+  });
+} else {
+  render();
+}
