@@ -180,7 +180,7 @@ Antes de automatizar la infraestructura, la primera instancia de la Parte 2 se c
 - Que las reglas de entrada del Security Group eran las previstas: `22` restringido, `8443` público, sin `80` ni `3306`.
 - Que la clave `ssh-ed25519` publicada en el registro del sistema de la instancia coincidía con la que la instancia presenta por la red (`ssh-keyscan`). Es el mismo control que `infra-apply` ahora realiza automáticamente por la API de AWS.
 
-La evidencia de la última sesión, con el pipeline completo, está en el [README §8](./README.md#-8-evidencia).
+La evidencia de la última sesión, con el pipeline completo, está en el [informe del TP §8](./docs/informe-tp.md#-8-evidencia).
 
 ## 10. Última sesión con el pipeline completo
 

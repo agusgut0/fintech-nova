@@ -2,7 +2,7 @@
 
 Material de apoyo para la presentación de la Parte 2. **Duración máxima: 10 minutos.**
 
-Se presenta en este orden: el repositorio (este archivo y el [README](./README.md)), el pipeline en GitLab y la aplicación funcionando en AWS. Si el sandbox no está disponible, se usan las capturas del [README §8](./README.md#-8-evidencia).
+Se presenta en este orden: el repositorio (este archivo y el [README](./README.md)), el pipeline en GitLab y la aplicación funcionando en AWS. Si el sandbox no está disponible, se usan las capturas del [informe del TP §8](./docs/informe-tp.md#-8-evidencia).
 
 Las slides están en [presentacion/demo.html](./presentacion/demo.html): se abren con doble clic en el navegador, sin internet. Se avanza con las flechas o con clic; **N** muestra las notas del orador y **T** inicia el cronómetro.
 
@@ -95,8 +95,8 @@ Las slides están en [presentacion/demo.html](./presentacion/demo.html): se abre
 | Pregunta | Dónde está la respuesta |
 |---|---|
 | ¿Por qué el deploy es manual y no automático? | [PIPELINE.md](./PIPELINE.md) (infra): el sandbox está apagado casi siempre. |
-| ¿Qué pasa si aparece una vulnerabilidad crítica sin parche? | [README §9](./README.md#-9-para-pensar--responder), pregunta 2. |
+| ¿Qué pasa si aparece una vulnerabilidad crítica sin parche? | [informe del TP §9](./docs/informe-tp.md#-9-para-pensar--responder), pregunta 2. |
 | ¿Cómo se protegen los secretos? | [SEGURIDAD.md §5](./SEGURIDAD.md#5-gestión-de-secretos-en-gitlab-y-autenticación-del-despliegue). |
 | ¿Por qué Docker Hub además del registry del labsys? | [ERRORES.md](./ERRORES.md), error 39. |
-| ¿Qué runner usan y por qué? | [README §3.C](./README.md#c-decisiones-clave). |
-| ¿Qué mejoras de la Parte 1 quedaron pendientes o descartadas? | [README §6](./README.md#-6-mejoras-respecto-de-la-parte-1). |
+| ¿Qué runner usan y por qué? | [informe del TP §3.C](./docs/informe-tp.md#c-decisiones-clave). |
+| ¿Qué mejoras de la Parte 1 quedaron pendientes o descartadas? | [informe del TP §6](./docs/informe-tp.md#-6-mejoras-respecto-de-la-parte-1). |

@@ -19,7 +19,7 @@ flowchart LR
     D --> T["verify<br/>HTTPS: web y 5 APIs,<br/>puerto 80 cerrado"]
 ```
 
-El diagrama detallado, con cada job, está en el [README §3](./README.md#-3-pipeline-de-cicd).
+El diagrama detallado, con cada job, está en el [informe del TP §3](./docs/informe-tp.md#-3-pipeline-de-cicd).
 
 - **validate:** Yamllint revisa la sintaxis del pipeline y de Compose. `compose-validate` valida
   Compose contra su esquema y comprueba las reglas del stack sobre el archivo resuelto: solo `web`
@@ -128,7 +128,7 @@ con 38 jobs y unos 23 minutos de duración. Terminó en estado *Warning*, que co
   cerrado.
 
 Datos de la instancia en [`AWS_EC2.md` §10](./AWS_EC2.md#10-última-sesión-con-el-pipeline-completo)
-y capturas en el [README §8](./README.md#-8-evidencia).
+y capturas en el [informe del TP §8](./docs/informe-tp.md#-8-evidencia).
 
 La primera corrida completa fue el pipeline #17361 (18/11/2026), antes de sumar el hardening y los
 linters.
