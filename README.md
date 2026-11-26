@@ -1,6 +1,7 @@
 # FinTech Nova — Microservicios en contenedores, del commit a AWS
 
 [![CI](https://github.com/agusgut0/fintech-nova/actions/workflows/ci.yml/badge.svg)](https://github.com/agusgut0/fintech-nova/actions/workflows/ci.yml)
+[![Demo](https://img.shields.io/badge/Demo-en_vivo-0b1f33?logo=githubpages&logoColor=white)](https://agusgut0.github.io/fintech-nova/)
 ![Docker](https://img.shields.io/badge/Docker_Compose-7_servicios-2496ED?logo=docker&logoColor=white)
 ![GitLab CI](https://img.shields.io/badge/GitLab_CI-38_jobs-FC6D26?logo=gitlab&logoColor=white)
 ![Terraform](https://img.shields.io/badge/Terraform-AWS_EC2-844FBA?logo=terraform&logoColor=white)
@@ -23,7 +24,7 @@ Es el trabajo práctico integrador de *Desarrollo y Operaciones (DevOps)*, de In
 
 </details>
 
-<sub>Capturas con datos de ejemplo. La consola completa se levanta con el quick start de abajo.</sub>
+<sub>Capturas con datos de ejemplo. **[Probá la demo en vivo](https://agusgut0.github.io/fintech-nova/)**: es la consola real, con las APIs simuladas en el navegador ([`demo.js`](./aplicaciones-contenedores/web/src/demo.js)). El stack completo se levanta con el quick start de abajo.</sub>
 
 ---
 
@@ -97,7 +98,7 @@ done
 
 | | GitLab CI ([`.gitlab-ci.yml`](./.gitlab-ci.yml)) | GitHub Actions ([`ci.yml`](./.github/workflows/ci.yml)) |
 |---|---|---|
-| Rol | **Pipeline real del proyecto**, con deploy a AWS | Espejo para este repositorio público |
+| Rol | **Pipeline real del proyecto**, con deploy a AWS | Espejo para este repositorio público, más la [demo en GitHub Pages](./.github/workflows/pages.yml) |
 | Validación | yamllint, Hadolint, ShellCheck, Compose contra reglas propias, `terraform validate`, linters de los 5 lenguajes | Lo mismo, sin los linters de lenguajes |
 | Seguridad | Gitleaks (todo el historial), Semgrep, Trivy fs y Trivy por imagen | Gitleaks, Semgrep y Trivy por imagen, con hallazgos en la pestaña **Security** (SARIF) |
 | Build | 7 imágenes en paralelo → registry interno | 7 imágenes en paralelo |

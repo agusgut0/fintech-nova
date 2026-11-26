@@ -1,6 +1,7 @@
 # FinTech Nova — Containerized microservices, from commit to AWS
 
 [![CI](https://github.com/agusgut0/fintech-nova/actions/workflows/ci.yml/badge.svg)](https://github.com/agusgut0/fintech-nova/actions/workflows/ci.yml)
+[![Demo](https://img.shields.io/badge/Demo-live-0b1f33?logo=githubpages&logoColor=white)](https://agusgut0.github.io/fintech-nova/)
 ![Docker](https://img.shields.io/badge/Docker_Compose-7_services-2496ED?logo=docker&logoColor=white)
 ![GitLab CI](https://img.shields.io/badge/GitLab_CI-38_jobs-FC6D26?logo=gitlab&logoColor=white)
 ![Terraform](https://img.shields.io/badge/Terraform-AWS_EC2-844FBA?logo=terraform&logoColor=white)
@@ -16,7 +17,7 @@ This was the capstone project of the *DevOps* course in the Information Systems 
 
 ![Operations console: health and latency of each microservice, and the payments table with an amount flagged "Sin cotización" (no FX rate)](./img-portfolio/consola-claro.png)
 
-<sub>Screenshot with sample data. The UI is in Spanish.</sub>
+<sub>Screenshot with sample data. The UI is in Spanish. **[Try the live demo](https://agusgut0.github.io/fintech-nova/)**: the real console, with the APIs simulated in the browser.</sub>
 
 ---
 

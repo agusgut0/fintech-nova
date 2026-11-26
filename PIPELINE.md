@@ -132,3 +132,12 @@ y capturas en el [informe del TP §8](./docs/informe-tp.md#-8-evidencia).
 
 La primera corrida completa fue el pipeline #17361 (18/11/2026), antes de sumar el hardening y los
 linters.
+
+## GitHub Actions (repositorio público)
+
+Además del pipeline de GitLab, el repositorio público tiene dos workflows:
+
+| Workflow | Qué hace |
+|---|---|
+| [`ci.yml`](./.github/workflows/ci.yml) | Mismo criterio que `validate` y `security`: lint, Gitleaks, Semgrep, build y Trivy de las 7 imágenes, y un smoke test con el stack completo levantado en el runner. No despliega: el sandbox de AWS solo existe durante una sesión. |
+| [`pages.yml`](./.github/workflows/pages.yml) | Compila la consola web en modo demo (`vite build --mode demo`, con las APIs simuladas en el navegador) y la publica en [GitHub Pages](https://agusgut0.github.io/fintech-nova/). Es un artefacto aparte y no reemplaza al deploy real. |

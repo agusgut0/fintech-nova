@@ -1,0 +1,53 @@
+# Demo pública de la consola web en GitHub Pages: https://agusgut0.github.io/fintech-nova/
+# Compila el frontend en modo demo (las 5 APIs se simulan en el navegador, ver src/demo.js) y lo
+# publica. Es un artefacto aparte: no reemplaza al deploy real en AWS (.gitlab-ci.yml).
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - aplicaciones-contenedores/web/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un solo deploy a la vez; si llega otro push, se publica el más nuevo
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: aplicaciones-contenedores/web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aplicaciones-contenedores/web/package-lock.json
+      - run: npm ci
+      - run: npx vite build --mode demo
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: aplicaciones-contenedores/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    # Permisos mínimos, solo en el job que publica
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
